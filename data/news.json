@@ -1,0 +1,142 @@
+[
+  {
+    "news_id": "N01",
+    "event_date": "2021-03-19",
+    "kind": "historical_replay",
+    "headline": "Fire halts chip production line at semiconductor plant in Hitachinaka, Japan",
+    "body": "A fire broke out in a clean room at a microcontroller factory in Hitachinaka, Ibaraki prefecture. The operator expects output of automotive chips to be suspended for at least a month while equipment is replaced."
+  },
+  {
+    "news_id": "N02",
+    "event_date": "2011-10-15",
+    "kind": "historical_replay",
+    "headline": "Severe floods submerge industrial estates around Ayutthaya, Thailand",
+    "body": "Monsoon floodwater has inundated several industrial parks in Ayutthaya province. Electronics and component makers have stopped production and warn that recovery could take months."
+  },
+  {
+    "news_id": "N03",
+    "event_date": "2021-02-17",
+    "kind": "historical_replay",
+    "headline": "Winter storm and power cuts shut petrochemical plants across the Texas Gulf Coast",
+    "body": "An extreme cold snap knocked out power across Texas, forcing resin and plastics producers around Houston and Freeport to shut down. Industry groups expect resin shortages for weeks."
+  },
+  {
+    "news_id": "N04",
+    "event_date": "2022-02-26",
+    "kind": "historical_replay",
+    "headline": "War in Ukraine forces wiring harness factories in the west of the country to stop work",
+    "body": "Following the invasion of Ukraine, several automotive wiring harness plants near Lviv have paused or reduced production. European car makers that rely on Ukrainian harnesses are warning of assembly stoppages."
+  },
+  {
+    "news_id": "N05",
+    "event_date": "2011-03-12",
+    "kind": "historical_replay",
+    "headline": "Earthquake and tsunami devastate Fukushima coast; Iwaki pigment plant knocked offline",
+    "body": "A magnitude 9 earthquake and tsunami struck north-east Japan. A specialist paint pigment plant near Iwaki, believed to be the main global source of a metallic effect pigment, has stopped production. Other factories in Ibaraki prefecture also report damage."
+  },
+  {
+    "news_id": "N06",
+    "event_date": "2022-04-05",
+    "kind": "historical_replay",
+    "headline": "Shanghai extends citywide lockdown; factories and port operations disrupted",
+    "body": "Authorities in Shanghai have extended a strict lockdown. Factories in the city, including battery and electronics plants in the Lingang area, are operating at reduced capacity and trucking to the port is severely limited."
+  },
+  {
+    "news_id": "N07",
+    "event_date": "2021-03-24",
+    "kind": "historical_replay",
+    "headline": "Giant container ship runs aground and blocks the Suez Canal",
+    "body": "A large container ship has become wedged across the Suez Canal, halting traffic in both directions. Hundreds of vessels are queuing and shipments between Asia and Europe face delays of one to three weeks."
+  },
+  {
+    "news_id": "N08",
+    "event_date": "2022-08-21",
+    "kind": "historical_replay",
+    "headline": "Dockworkers at the Port of Felixstowe begin eight-day strike",
+    "body": "Workers at Felixstowe, the UK's busiest container port, have walked out in a dispute over pay. Container handling has largely stopped and shippers are diverting some vessels to other ports."
+  },
+  {
+    "news_id": "N09",
+    "event_date": "2022-09-06",
+    "kind": "historical_replay",
+    "headline": "Typhoon floods steelworks in Pohang, South Korea",
+    "body": "A powerful typhoon brought heavy rain and flooding to Pohang. A major steel producer has suspended operations at its blast furnaces and warns that supply of steel coil and strip will be disrupted."
+  },
+  {
+    "news_id": "N10",
+    "event_date": "2026-09-30",
+    "kind": "synthetic",
+    "headline": "Stuttgart motor show draws record crowds",
+    "body": "The annual motor show in Stuttgart attracted record visitor numbers, with electric vehicles taking centre stage."
+  },
+  {
+    "news_id": "N11",
+    "event_date": "2026-10-01",
+    "kind": "synthetic",
+    "headline": "Taiwanese chipmaker reports record quarterly profit",
+    "body": "A semiconductor firm in central Taiwan posted its best quarter on record, citing strong demand from automotive customers."
+  },
+  {
+    "news_id": "N12",
+    "event_date": "2026-10-02",
+    "kind": "synthetic",
+    "headline": "Fire destroys restaurant in Marseille old port",
+    "body": "Firefighters tackled a blaze that destroyed a restaurant near the old port in Marseille. No injuries were reported."
+  },
+  {
+    "news_id": "N13",
+    "event_date": "2026-10-03",
+    "kind": "synthetic",
+    "headline": "Flash floods disrupt traffic in Jakarta",
+    "body": "Heavy rain caused flash flooding across parts of Jakarta, closing roads and delaying commuter trains."
+  },
+  {
+    "news_id": "N14",
+    "event_date": "2026-10-03",
+    "kind": "synthetic",
+    "headline": "Coventry City win local derby",
+    "body": "Coventry City secured a late winner in front of a sold-out home crowd."
+  },
+  {
+    "news_id": "N15",
+    "event_date": "2026-10-04",
+    "kind": "synthetic",
+    "headline": "Rival car maker unveils electric saloon in Munich",
+    "body": "A rival manufacturer launched a new electric saloon at an event in Munich, promising deliveries next spring."
+  },
+  {
+    "news_id": "N16",
+    "event_date": "2026-10-05",
+    "kind": "synthetic",
+    "headline": "Nakagawa town festival celebrates autumn harvest",
+    "body": "Residents of Nakagawa in Tochigi prefecture gathered for the annual harvest festival."
+  },
+  {
+    "news_id": "N17",
+    "event_date": "2026-10-05",
+    "kind": "synthetic",
+    "headline": "Belgian dockworkers accept pay deal, no strike planned",
+    "body": "Unions at a major Belgian container port voted to accept a new pay offer, ending the threat of industrial action."
+  },
+  {
+    "news_id": "N18",
+    "event_date": "2026-10-06",
+    "kind": "synthetic",
+    "headline": "Bank of England holds interest rates",
+    "body": "The Bank of England kept its base rate unchanged, citing easing inflation."
+  },
+  {
+    "news_id": "N19",
+    "event_date": "2026-10-07",
+    "kind": "synthetic",
+    "headline": "Heatwave grips eastern Spain; factories report no closures",
+    "body": "Temperatures in Valencia passed 40C. Regional authorities said industrial sites are operating normally with adjusted shift times."
+  },
+  {
+    "news_id": "N20",
+    "event_date": "2026-10-08",
+    "kind": "synthetic",
+    "headline": "Cyberattack takes down booking system at Dublin software firm",
+    "body": "A Dublin-based software company said a ransomware attack had disrupted its online booking platform for hotel customers."
+  }
+]

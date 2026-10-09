@@ -1,0 +1,5 @@
+SUPPLY AGREEMENT NG-2024-018
+Supplier: Taichung Semiconductor Ltd (S011), Taichung, Taiwan.
+Products: power management ICs and body control module chips.
+
+This supplier is qualified as the second source for Hitachinaka Microchip KK (S001) part numbers. Maximum surge capacity is 40 percent of Northgate's weekly chip demand. Shipping via the Suez Canal to Southampton. Force majeure notice within 3 days.

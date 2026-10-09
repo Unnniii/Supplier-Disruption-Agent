@@ -1,0 +1,9 @@
+COMPONENT SUPPLY CONTRACT NG-2023-044
+Parties: Northgate Motors Ltd and Ayutthaya Sensor Co (S002), Ayutthaya, Thailand.
+Products: parking sensors, radar sensors and camera modules.
+
+Section 5 Business continuity. The Supplier maintains a documented continuity plan including flood defences at its Ayutthaya site. If production stops, the Supplier must notify Northgate within 5 days.
+
+Section 6 Alternative supply. Penang Electronics Sdn Bhd (S012) is approved as an alternate source for sensors and camera modules. Transfer lead time is approximately 4 weeks. Penang ships via the Cape of Good Hope.
+
+Section 8 Freight. Expedited air freight costs are shared 50/50 when delay is caused by force majeure.

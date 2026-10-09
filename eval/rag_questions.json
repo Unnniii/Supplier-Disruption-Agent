@@ -1,0 +1,12 @@
+[
+  {"qid": "Q01", "question": "Who is the approved second source for Hitachinaka Microchip's chips, and how fast can we switch?", "expected_contract": "contract_S001.txt", "expected_answer_contains": ["S011", "6 weeks"]},
+  {"qid": "Q02", "question": "Is there any backup supplier for the metallic flake pigment?", "expected_contract": "contract_S005.txt", "expected_answer_contains": ["no second source"]},
+  {"qid": "Q03", "question": "Which harness types can Wroclaw Wiring cover if Lviv stops?", "expected_contract": "contract_S004.txt", "expected_answer_contains": ["door harness", "engine bay harness"]},
+  {"qid": "Q04", "question": "How much consignment stock of battery cells do we hold?", "expected_contract": "contract_S006.txt", "expected_answer_contains": ["15 days"]},
+  {"qid": "Q05", "question": "What price premium applies if we switch resin to the backup supplier?", "expected_contract": "contract_S003.txt", "expected_answer_contains": ["20 percent"]},
+  {"qid": "Q06", "question": "How many days of castings safety stock does Pune keep in the UK?", "expected_contract": "contract_S007.txt", "expected_answer_contains": ["30 days"]},
+  {"qid": "Q07", "question": "Who shares the cost of air freight when Ayutthaya Sensor deliveries are late due to force majeure?", "expected_contract": "contract_S002.txt", "expected_answer_contains": ["50/50"]},
+  {"qid": "Q08", "question": "Can we buy steel elsewhere if Pohang stops shipping?", "expected_contract": "contract_S009.txt", "expected_answer_contains": ["spot market"]},
+  {"qid": "Q09", "question": "Which e-motor parts from Ningbo have a second source?", "expected_contract": "contract_S008.txt", "expected_answer_contains": ["bearings"]},
+  {"qid": "Q10", "question": "What is the maximum surge capacity of the Taiwanese chip backup?", "expected_contract": "contract_S011.txt", "expected_answer_contains": ["40 percent"]}
+]

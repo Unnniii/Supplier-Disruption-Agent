@@ -1,0 +1,11 @@
+SUPPLY AGREEMENT NG-2024-017
+Buyer: Northgate Motors Ltd. Supplier: Hitachinaka Microchip KK (S001), Hitachinaka, Japan.
+Scope: engine control microcontrollers and body control module chips for NX-1, NX-3 and NX-EV.
+
+Clause 7 Force majeure. The Supplier shall notify the Buyer in writing within 3 business days of any event (including fire, earthquake, flood or government order) that prevents delivery. Obligations are suspended for the duration of the event, up to a maximum of 90 days, after which the Buyer may terminate.
+
+Clause 9 Second source. Taichung Semiconductor Ltd (S011) is a qualified second source for the same part numbers. Volume can be switched within 6 weeks, subject to a production part approval re-check.
+
+Clause 11 Expedited freight. Where delay is caused by the Supplier, air freight is at the Supplier's cost.
+
+Clause 12 Buffer stock. No consignment stock is held at Buyer plants.

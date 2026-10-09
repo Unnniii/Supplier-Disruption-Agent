@@ -1,0 +1,32 @@
+{
+  "_note": "Stand-in geocoder for v1: place name -> coordinates. Replace with a geocoding API in v2.",
+  "places": {
+    "Hitachinaka": [36.3966, 140.5345],
+    "Ibaraki": [36.3418, 140.4468],
+    "Ayutthaya": [14.3532, 100.5689],
+    "Bangkok": [13.7563, 100.5018],
+    "Houston": [29.7604, -95.3698],
+    "Freeport, Texas": [28.9541, -95.3597],
+    "Texas Gulf Coast": [29.3013, -94.7977],
+    "Ukraine": [50.4501, 30.5234],
+    "Kyiv": [50.4501, 30.5234],
+    "Lviv": [49.8397, 24.0297],
+    "Fukushima coast": [37.4211, 141.0328],
+    "Iwaki": [37.0505, 140.8877],
+    "Sendai": [38.2682, 140.8694],
+    "Shanghai": [31.2304, 121.4737],
+    "Pohang": [36.0190, 129.3435],
+    "Stuttgart": [48.7758, 9.1829],
+    "Taichung": [24.1477, 120.6736],
+    "Marseille": [43.2965, 5.3698],
+    "Jakarta": [-6.2088, 106.8456],
+    "Coventry": [52.4068, -1.5197],
+    "Munich": [48.1351, 11.5820],
+    "Nakagawa": [36.7369, 140.1695],
+    "Antwerp": [51.2194, 4.4025],
+    "Valencia": [39.4699, -0.3763],
+    "Dublin": [53.3498, -6.2603]
+  },
+  "routes": ["Suez Canal", "Cape of Good Hope", "Atlantic", "Mediterranean", "Road via Poland", "Road via Channel", "Domestic road"],
+  "ports": ["Felixstowe", "Southampton", "Liverpool", "Dover", "Shanghai", "Ningbo", "Busan", "Tokyo", "Yokohama", "Kaohsiung", "Penang", "Chennai", "Nhava Sheva", "Laem Chabang", "Houston", "Veracruz", "New York", "Valencia", "Leixoes", "Izmir", "Casablanca", "Antwerp"]
+}

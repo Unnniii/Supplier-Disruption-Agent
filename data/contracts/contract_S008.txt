@@ -1,0 +1,7 @@
+SUPPLY AGREEMENT NG-2024-031
+Supplier: Ningbo Motor Components (S008), Ningbo, China.
+Products: rotor lamination stacks, stator windings and e-motor bearings for NX-EV.
+
+7.1 Force majeure notice within 3 days.
+7.2 Stuttgart Antriebstechnik GmbH (S015) is approved as a second source for e-motor bearings only. Lamination stacks and stator windings are single sourced.
+7.3 Goods ship from Ningbo port via the Suez Canal to Southampton.
