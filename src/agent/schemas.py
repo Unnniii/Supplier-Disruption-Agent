@@ -41,7 +41,8 @@ class SupplierImpact(BaseModel):
     supplier_id: str
     risk_level: Literal["low", "medium", "high"]
     min_days_of_cover: float | None
-    parts: list[PartRisk] = Field(default_factory=list)
+    driver_part_ids: list[str] = Field(default_factory=list, description="part_ids that drive the rating (max 3); details are attached by code")
+    summary: str = Field("", description="One sentence: what stops first, where, and when")
 
 
 class ImpactResult(BaseModel):

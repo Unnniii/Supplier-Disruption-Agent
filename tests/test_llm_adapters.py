@@ -159,3 +159,56 @@ def test_claude_adapter_strips_private_blocks():
         {"role": "assistant", "content": [{"type": "tool_use", "id": "1", "name": "t", "input": {}},
                                           {"type": "_gemini_content", "content": object()}]}])
     assert all(not b["type"].startswith("_") for b in captured["messages"][1]["content"])
+
+
+# --- fixes from the first real Gemini run (2026-10-09) ---------------------------
+
+def test_invalid_json_gets_one_repair_turn():
+    from tests.test_agents_graph import ScriptedLLM, _text  # noqa: F401
+    bad = LLMResponseText('{"suppliers": [ {"supplier_id": "S001" "why": "x"} ]}')
+    good = LLMResponseText('{"suppliers": [{"supplier_id": "S001", "why": "x"}]}')
+    llm = ScriptedLLM({"mapper": [bad, good]})
+    run = agents.run_tool_agent(llm, agent="mapper", system="", payload={}, tools=[], schema=MapResult)
+    assert run.repairs == 1 and run.output.suppliers[0].supplier_id == "S001"
+
+
+def test_second_invalid_json_fails_the_agent():
+    from tests.test_agents_graph import ScriptedLLM
+    bad = LLMResponseText("{not json")
+    llm = ScriptedLLM({"mapper": [bad, bad]})
+    with pytest.raises(agents.AgentError):
+        agents.run_tool_agent(llm, agent="mapper", system="", payload={}, tools=[], schema=MapResult)
+
+
+def LLMResponseText(text):
+    from agent.llm import LLMResponse
+    return LLMResponse(text, [], raw_content=[{"type": "text", "text": text}])
+
+
+def test_impact_rating_is_checked_against_the_rule():
+    from agent.schemas import ImpactResult
+    rows = __import__("agent.erp", fromlist=["x"]).parts_at_risk("S001")
+    rule_level, rule_min = agents.rule_risk(rows)
+    wrong = "low" if rule_level != "low" else "high"
+    checked, disagreements = agents.check_impact(ImpactResult.model_validate(
+        {"impacts": [{"supplier_id": "S001", "risk_level": wrong, "min_days_of_cover": 999, "driver_part_ids": []}]}))
+    i = checked["impacts"][0]
+    assert i["risk_level"] == rule_level and i["agent_risk_level"] == wrong
+    assert i["min_days_of_cover"] == rule_min       # numbers come from the ERP, not the model
+    assert i["parts"]                               # details attached by code
+    assert disagreements and "S001" in disagreements[0]
+
+
+def test_gemini_embeddings_one_vector_per_text():
+    from agent.rag import GeminiEmbedder
+
+    class OneVectorPerCall:
+        """Mimics the real failure: a list of texts came back as ONE vector."""
+        def __init__(self):
+            self.models = self
+
+        def embed_content(self, *, model, contents, config):
+            return NS(embeddings=[NS(values=[float(len(contents))])])
+
+    vecs = GeminiEmbedder(client=OneVectorPerCall()).documents(["a", "b", "c"])
+    assert len(vecs) == 3

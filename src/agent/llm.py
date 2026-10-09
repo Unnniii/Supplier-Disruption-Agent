@@ -192,8 +192,9 @@ class OllamaLLM:
             if isinstance(c, str):
                 out.append({"role": m["role"], "content": c})
             elif m["role"] == "assistant":
-                out.append({"role": "assistant", "content": "", "tool_calls": [
-                    {"function": {"name": b["name"], "arguments": b["input"]}} for b in c if b.get("type") == "tool_use"]})
+                text = "\n".join(b["text"] for b in c if b.get("type") == "text")
+                calls = [{"function": {"name": b["name"], "arguments": b["input"]}} for b in c if b.get("type") == "tool_use"]
+                out.append({"role": "assistant", "content": text, **({"tool_calls": calls} if calls else {})})
             else:
                 for b in c:
                     if b.get("type") == "tool_result":
@@ -218,6 +219,8 @@ class OllamaLLM:
             call = ToolCall(f"o{i}_{fn['name']}", fn["name"], args)
             calls.append(call)
             raw.append({"type": "tool_use", "id": call.id, "name": call.name, "input": call.args})
+        if msg.get("content"):
+            raw.insert(0, {"type": "text", "text": msg["content"]})
         return LLMResponse(text=msg.get("content", ""), tool_calls=calls, raw_content=raw,
                            input_tokens=data.get("prompt_eval_count", 0), output_tokens=data.get("eval_count", 0))
 

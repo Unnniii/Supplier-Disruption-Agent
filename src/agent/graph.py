@@ -28,6 +28,7 @@ class RunState(TypedDict, total=False):
     scan: dict
     suppliers: list[dict]          # [{supplier_id, name, why}]
     impact: dict
+    impact_disagreements: list[str]  # agent rating vs the deterministic rule
     advice: dict
     retrieved: dict[str, str]      # chunk_id -> text the advisor actually saw
     issues: list[str]
@@ -68,7 +69,8 @@ def build_graph(llm: LLM):
 
     def impact_node(state: RunState) -> RunState:
         run = agents.impact(llm, [s["supplier_id"] for s in state["suppliers"]])
-        return {"impact": run.output.model_dump(), "usage": state["usage"] + [run.usage()]}
+        checked, disagreements = agents.check_impact(run.output)
+        return {"impact": checked, "impact_disagreements": disagreements, "usage": state["usage"] + [run.usage()]}
 
     def advise_node(state: RunState) -> RunState:
         run = agents.advisor(llm, state["suppliers"], state.get("issues"))

@@ -101,12 +101,22 @@ class GeminiEmbedder:
         from google.genai import types
 
         from agent.llm import _retry_on_rate_limit
-        out = []
+        cfg = types.EmbedContentConfig(task_type=task, output_dimensionality=768)
+
+        def call(batch: list[str]):
+            # Each text is its own Content. A bare list of strings can be read as
+            # several parts of ONE input, which returns one vector for the batch.
+            contents = [types.Content(parts=[types.Part(text=t)]) for t in batch]
+            return _retry_on_rate_limit(lambda: self._client.models.embed_content(
+                model=config.EMBED_MODEL, contents=contents, config=cfg)).embeddings
+
+        out: list[list[float]] = []
         for i in range(0, len(texts), 50):  # batch to stay inside request limits
-            resp = _retry_on_rate_limit(lambda batch=texts[i:i + 50]: self._client.models.embed_content(
-                model=config.EMBED_MODEL, contents=batch,
-                config=types.EmbedContentConfig(task_type=task, output_dimensionality=768)))
-            out.extend(e.values for e in resp.embeddings)
+            batch = texts[i:i + 50]
+            vectors = call(batch)
+            if len(vectors) != len(batch):  # model would not batch: one request per text
+                vectors = [call([t])[0] for t in batch]
+            out.extend(v.values for v in vectors)
         return out
 
     def documents(self, texts: list[str]) -> list[list[float]]:

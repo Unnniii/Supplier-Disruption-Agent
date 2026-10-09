@@ -98,9 +98,9 @@ class FakeLLM:
             covers = [r["days_of_cover"] for r in rows]
             crit_low = any(r["is_critical"] and r["days_of_cover"] < 7 for r in rows)
             level = "high" if crit_low else "medium" if covers and min(covers) < 14 else "low"
+            worst = sorted(rows, key=lambda r: r["days_of_cover"])[:3]
             impacts.append({"supplier_id": sid, "risk_level": level, "min_days_of_cover": min(covers) if covers else None,
-                            "parts": [{k: r[k] for k in ("part_id", "part_name", "plant_id", "days_of_cover",
-                                                         "is_critical", "used_in_models")} for r in rows]})
+                            "driver_part_ids": [r["part_id"] for r in worst], "summary": "keyword stand-in"})
         return {"impacts": impacts}
 
     def _advisor(self, p, results):

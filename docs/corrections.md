@@ -1,0 +1,19 @@
+# Corrections log
+
+Every bug, wrong assumption and process failure, with what caught it. Newest first.
+
+## 2026-10-09: first real run (Gemini free tier, 3 headlines)
+
+| What went wrong | What caught it | Fix |
+|---|---|---|
+| Gemini embeddings returned 1 vector for a batch of 37 contract clauses, so Chroma refused the insert and contract search silently fell back to Chroma's local model. | The fallback warning printed by `get_retriever()`. | Send each text as its own `Content`; if the count still does not match, embed one at a time. Regression test with a client that mimics the failure. |
+| On the Suez headline (10 suppliers) the Impact agent's JSON broke at character 4005, failing the headline. Cause: the schema asked the model to copy every part's numbers back, and the 1,500-token output budget is shared with Gemini's thinking. | Pydantic validation in the tool loop; the headline was marked `error` and the batch carried on. | The model now returns only the rating, at most 3 driver part ids and a one-line summary; code attaches part details from the ERP. Output budget raised to 8,192. One repair turn on invalid JSON. |
+| The Impact agent's rating was trusted as-is, although the rule is plain arithmetic. | Design review after the failure above. | `check_impact()` recomputes the rating from the ERP. The rule wins; disagreements are logged so the evaluation can count them. |
+| `uv run python -m agent.run` failed with `No module named 'agent'` on a clean Windows install. Tests passed only because pytest adds `src` to the path. | First run on a fresh machine. | Added a build system so `uv sync` installs the package. |
+
+## Before the first real run
+
+| What went wrong | What caught it | Fix |
+|---|---|---|
+| The rule-based stand-in treated "Coventry City **win**" style negation words as substrings, so "winter storm" was read as a non-event. | Offline run over all 20 headlines. | Whole-word matching. |
+| Swapping keyword search for embeddings changed which contract clause ranked first, and the stand-in Advisor lost the backup suppliers for S003, S004 and S027. | Comparing the sandbox run (BM25) with the first laptop run (embeddings). | Not fixed yet: the RAG evaluation measures it. |

@@ -4,7 +4,7 @@ An AI agent that reads the news, works out which suppliers a disruption hits, ch
 
 It runs against the ERP of **Northgate Motors**, a fictional car maker with two UK plants. The news includes **real past disruptions** (the 2021 Suez blockage, the 2021 Renesas chip fire, the 2011 Thailand floods, the 2011 Tohoku earthquake, the 2022 Shanghai lockdown and others), replayed against today's supplier base, plus irrelevant headlines and deliberate traps.
 
-> Status: Day 1 done. Data, answer key, four agents, orchestration and tests are built and pass offline. Next: evaluation with the real model.
+> Status: first real run done on the Gemini free tier. Bugs it exposed are fixed and logged in [docs/corrections.md](docs/corrections.md). Next: the evaluation script over all 20 headlines.
 
 ## The agents
 
@@ -32,7 +32,8 @@ impact -> advisor -> verifier --(issues, first time)--> advisor
 
 - Early exits keep cost down: in the answer key, 11 of the 20 headlines should stop after the Scanner or Mapper.
 - The Mapper can only report suppliers the ERP tools returned; invented IDs are dropped.
-- The math is not done by the LLM. Distances, radii and days of cover are plain Python and SQL.
+- The math is not done by the LLM. Distances, radii and days of cover are plain Python and SQL. The Impact agent's risk rating is re-checked against the rule in code; the rule wins and disagreements are logged.
+- If an agent returns invalid JSON it gets one repair turn with its own error message before the headline is marked `error`.
 - A failing agent marks that headline `error` and the batch carries on.
 - Every headline is logged to `logs/runs.jsonl` with each agent's tokens, tool calls, time and cost.
 
@@ -86,7 +87,7 @@ Other inputs:
 ```bash
 uv sync
 uv run python scripts/seed_erp.py
-uv run pytest                                   # 36 tests, offline, free
+uv run pytest                                   # 40 tests, offline, free
 uv run python -m agent.run --fake               # whole pipeline with a rule-based stand-in model
 cp .env.example .env                            # add GEMINI_API_KEY (free, aistudio.google.com/apikey)
 uv run python -m agent.run --news N01 N07       # try two headlines first
@@ -104,7 +105,7 @@ Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise C
 
 - The verifier checks that a cited clause names the backup, not that the backup is in the right direction. For example, Taichung's contract names Hitachinaka because Taichung is Hitachinaka's backup. A model could misread that as "Hitachinaka is Taichung's backup" and pass the check.
 - When the Scanner names both a country and a city, a wide radius (war: 600 km) from the city can catch suppliers in neighbouring countries. The evaluation will show how often this happens.
-- The Gemini, Ollama and Chroma paths are tested with stand-ins, not against the live services: the build sandbox had no API key or model download. The first real run is the real test.
+- The Ollama path is tested with stand-ins only. The Gemini path has had one real 3-headline run (see the corrections log).
 - Gemini model names change; if `gemini-3.1-flash-lite` returns 404, set `SDA_MODEL` to the current Flash-Lite name shown in AI Studio.
 
 ## Roadmap

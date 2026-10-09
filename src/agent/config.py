@@ -27,7 +27,7 @@ MODEL = os.getenv("SDA_MODEL") or DEFAULT_MODELS.get(PROVIDER, "fake")
 EMBED_MODEL = os.getenv("SDA_EMBED_MODEL", "gemini-embedding-2")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
-MAX_TOKENS = int(os.getenv("SDA_MAX_TOKENS", "1500"))
+MAX_TOKENS = int(os.getenv("SDA_MAX_TOKENS", "8192"))  # Gemini 3 counts thinking against this
 RETRIEVER = os.getenv("SDA_RETRIEVER", "auto")  # auto | gemini | chroma | keyword
 MAX_AGENT_TURNS = 8      # tool-use loop guard per agent
 MAX_REVISIONS = 1        # verifier can send the advisor back once

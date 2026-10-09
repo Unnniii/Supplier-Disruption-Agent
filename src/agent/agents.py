@@ -40,10 +40,11 @@ class AgentRun:
     input_tokens: int = 0
     output_tokens: int = 0
     seconds: float = 0.0
+    repairs: int = 0
 
     def usage(self) -> dict[str, Any]:
         return {"agent": self.agent, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens,
-                "tool_calls": len(self.tool_calls), "seconds": round(self.seconds, 2)}
+                "tool_calls": len(self.tool_calls), "repairs": self.repairs, "seconds": round(self.seconds, 2)}
 
 
 _JSON = re.compile(r"\{.*\}", re.DOTALL)
@@ -81,7 +82,17 @@ def run_tool_agent(llm: LLM, *, agent: str, system: str, payload: Any,
         run.input_tokens += resp.input_tokens
         run.output_tokens += resp.output_tokens
         if not resp.tool_calls:
-            run.output = _parse(resp.text, schema)
+            try:
+                run.output = _parse(resp.text, schema)
+            except AgentError as e:
+                if run.repairs >= 1:
+                    raise
+                # One repair turn: show the model its own error and ask again.
+                run.repairs += 1
+                messages.append({"role": "assistant", "content": resp.raw_content or [{"type": "text", "text": resp.text}]})
+                messages.append({"role": "user", "content": f"Your reply was not valid JSON for the schema ({e}). "
+                                 "Reply again with ONLY the corrected, complete JSON object."})
+                continue
             run.seconds = time.perf_counter() - started
             return run
         messages.append({"role": "assistant", "content": resp.raw_content})
@@ -123,7 +134,8 @@ IMPACT_SYSTEM = """You are the Impact analyst. For each exposed supplier, call g
 - medium: any part with under 14 days of cover
 - low: otherwise
 min_days_of_cover is the lowest days_of_cover across that supplier's parts.
-List the parts that drive the rating. Copy numbers from tool results; never estimate."""
+Name at most 3 driver_part_ids per supplier; do not copy part details, code attaches them.
+Copy numbers from tool results; never estimate."""
 
 ADVISOR_SYSTEM = """You are the Contract advisor. For each exposed supplier, search that supplier's
 contract (search_contracts with its supplier_id) for: second source / backup supplier,
@@ -158,6 +170,40 @@ def advisor(llm: LLM, suppliers: list[dict], issues: list[str] | None = None) ->
         payload["verifier_issues_to_fix"] = issues
     return run_tool_agent(llm, agent="advisor", system=ADVISOR_SYSTEM, payload=payload,
                           tools=ADVISOR_TOOLS, schema=AdviceResult)
+
+
+# --- Deterministic checks (code, not an LLM) ------------------------------------
+
+def rule_risk(rows: list[dict]) -> tuple[str, float | None]:
+    """The rating rule from IMPACT_SYSTEM, in code. The source of truth."""
+    if not rows:
+        return "low", None
+    covers = [r["days_of_cover"] for r in rows]
+    if any(r["is_critical"] and r["days_of_cover"] < 7 for r in rows):
+        level = "high"
+    elif min(covers) < 14:
+        level = "medium"
+    else:
+        level = "low"
+    return level, min(covers)
+
+
+def check_impact(impact: ImpactResult) -> tuple[dict, list[str]]:
+    """Attach part details from the ERP and compare the agent's rating with the rule.
+    The rule wins; disagreements are kept so the evaluation can count them."""
+    out, disagreements = [], []
+    for i in impact.impacts:
+        rows = erp.parts_at_risk(i.supplier_id)
+        level, min_cover = rule_risk(rows)
+        if i.risk_level != level:
+            disagreements.append(f"{i.supplier_id}: agent said {i.risk_level}, rule says {level}")
+        drivers = set(i.driver_part_ids)
+        parts = [r for r in rows if r["part_id"] in drivers] or sorted(rows, key=lambda r: r["days_of_cover"])[:3]
+        out.append({"supplier_id": i.supplier_id, "risk_level": level, "agent_risk_level": i.risk_level,
+                    "min_days_of_cover": min_cover, "summary": i.summary,
+                    "parts": [{k: r[k] for k in ("part_id", "part_name", "plant_id", "days_of_cover",
+                                                 "is_critical", "used_in_models")} for r in parts]})
+    return {"impacts": out}, disagreements
 
 
 # --- Verifier (code, not an LLM) -----------------------------------------------
