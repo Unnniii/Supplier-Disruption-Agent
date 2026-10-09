@@ -1,7 +1,8 @@
 """Run the morning scan.
 
     uv run python -m agent.run --fake            # offline, free, rule-based stand-in
-    uv run python -m agent.run                    # real Claude (needs ANTHROPIC_API_KEY)
+    uv run python -m agent.run                    # Gemini free tier (needs GEMINI_API_KEY)
+    SDA_PROVIDER=ollama uv run python -m agent.run   # local model, free, offline
     uv run python -m agent.run --news N01 N07     # only some headlines
 
 Every run appends one line per headline to logs/runs.jsonl (inputs, decisions,
@@ -18,6 +19,7 @@ from datetime import datetime, timezone
 
 from agent import config
 from agent.graph import build_graph, run_news
+from agent.llm import make_llm
 
 
 def load_news(ids: list[str] | None) -> list[dict]:
@@ -25,16 +27,8 @@ def load_news(ids: list[str] | None) -> list[dict]:
     return [n for n in news if not ids or n["news_id"] in ids]
 
 
-def make_llm(fake: bool):
-    if fake:
-        from agent.fake import FakeLLM
-        return FakeLLM()
-    from agent.llm import ClaudeLLM
-    return ClaudeLLM()
-
-
 def scan(news_items: list[dict], fake: bool, log: bool = True) -> list[dict]:
-    llm = make_llm(fake)
+    llm = make_llm("fake" if fake else None)
     graph = build_graph(llm)
     run_id = uuid.uuid4().hex[:8]
     results = []
@@ -46,6 +40,7 @@ def scan(news_items: list[dict], fake: bool, log: bool = True) -> list[dict]:
         record = {
             "run_id": run_id,
             "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "provider": "fake" if fake else config.PROVIDER,
             "model": llm.model,
             "prompt_version": "v1",
             "news_id": item["news_id"],
@@ -92,7 +87,8 @@ def print_alerts(results: list[dict]) -> None:
         for issue in r["issues"]:
             print(f"    ! {issue}")
     total = sum(r["cost_usd"] for r in results)
-    print(f"\n{len(results)} headlines, cost ${total:.4f}")
+    tokens = sum(r["input_tokens"] + r["output_tokens"] for r in results)
+    print(f"\n{len(results)} headlines, {tokens} tokens, cost ${total:.4f}")
 
 
 def main() -> None:

@@ -36,6 +36,21 @@ impact -> advisor -> verifier --(issues, first time)--> advisor
 - A failing agent marks that headline `error` and the batch carries on.
 - Every headline is logged to `logs/runs.jsonl` with each agent's tokens, tool calls, time and cost.
 
+## Models and cost: built to run for £0
+
+| `SDA_PROVIDER` | Model | Cost | Use it for |
+|---|---|---|---|
+| `gemini` (default) | Gemini 3.1 Flash-Lite + Gemini Embedding 2, via Google AI Studio | free tier | normal runs and evaluation |
+| `ollama` | any local model, e.g. `qwen3:8b` | free, runs on your laptop | no-quota, fully offline runs |
+| `claude` | Claude Haiku 5.5 | paid | comparison only |
+| `fake` / `--fake` | rule-based stand-in | free | tests and CI |
+
+Switching provider is a setting, not a code change: every agent talks to one `LLM` interface and each adapter translates to its own API (`src/agent/llm.py`). The tool-use loop is ours on every provider, so logging, the cap and error handling behave the same everywhere.
+
+**The cap.** Every run is wrapped in `CappedLLM`. After `SDA_MAX_LLM_CALLS` model calls (default 200; the offline 20-headline scan makes 80, and a real model takes extra tool turns) the run stops, the remaining headlines are logged as `error: call cap reached`, and nothing else is spent. Free-tier `429` rate limits are retried with backoff. Contract embeddings are computed once and stored in Chroma, so re-runs do not spend embedding quota.
+
+**Free-tier caveats, stated plainly.** Google may use free-tier inputs to improve its products; all data in this project is fictional, so that is acceptable here. Google's terms restrict the free tier for apps *serving* users in the UK and EEA; this repo is a personal demo, and `ollama` is the fully local alternative.
+
 ## The data
 
 `scripts/seed_erp.py` builds `data/erp.db` (SQLite) with a fixed random seed.
@@ -71,16 +86,17 @@ Other inputs:
 ```bash
 uv sync
 uv run python scripts/seed_erp.py
-uv run pytest                                   # 28 tests, offline, free
+uv run pytest                                   # 36 tests, offline, free
 uv run python -m agent.run --fake               # whole pipeline with a rule-based stand-in model
-cp .env.example .env                            # add ANTHROPIC_API_KEY
-uv run python -m agent.run                      # real run with Claude Haiku 5.5
-uv run python -m agent.run --news N01 N07       # just some headlines
+cp .env.example .env                            # add GEMINI_API_KEY (free, aistudio.google.com/apikey)
+uv run python -m agent.run --news N01 N07       # try two headlines first
+uv run python -m agent.run                      # full scan, Gemini free tier
+SDA_PROVIDER=ollama uv run python -m agent.run  # local model instead (install Ollama, `ollama pull qwen3:8b`)
 ```
 
-The first real run downloads a small embedding model for Chroma (~80 MB). If that fails, the contract search falls back to keyword (BM25) retrieval and says so.
+Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise Chroma's local embedding model, otherwise keyword (BM25) search, and prints which one it fell back to.
 
-**What the tests cover:** data integrity, the Map step reaching the answer key, routing and early exits, the tool loop's turn limit and unknown-tool handling, the verifier's checks, the advisor revise loop, and failure isolation.
+**What the tests cover:** the cap, the Gemini and Ollama adapters (with stand-in clients, no network), data integrity, the Map step reaching the answer key, routing and early exits, the tool loop's turn limit and unknown-tool handling, the verifier's checks, the advisor revise loop, and failure isolation.
 
 **`--fake` mode is a floor, not a result.** It is keyword matching that never reads the answer key. It exists so the pipeline can be tested without cost. Real accuracy numbers come from the evaluation with Claude.
 
@@ -88,7 +104,8 @@ The first real run downloads a small embedding model for Chroma (~80 MB). If tha
 
 - The verifier checks that a cited clause names the backup, not that the backup is in the right direction. For example, Taichung's contract names Hitachinaka because Taichung is Hitachinaka's backup. A model could misread that as "Hitachinaka is Taichung's backup" and pass the check.
 - When the Scanner names both a country and a city, a wide radius (war: 600 km) from the city can catch suppliers in neighbouring countries. The evaluation will show how often this happens.
-- The Chroma path has not been run in the build sandbox (model download blocked there); the keyword path is what the tests exercise.
+- The Gemini, Ollama and Chroma paths are tested with stand-ins, not against the live services: the build sandbox had no API key or model download. The first real run is the real test.
+- Gemini model names change; if `gemini-3.1-flash-lite` returns 404, set `SDA_MODEL` to the current Flash-Lite name shown in AI Studio.
 
 ## Roadmap
 
@@ -96,4 +113,6 @@ The first real run downloads a small embedding model for Chroma (~80 MB). If tha
 - [x] Day 1: RAG over contracts, four agents + verifier, LangGraph orchestration, run logs
 - [ ] Day 2: evaluation script (precision, recall, contract retrieval hit rate, cost per run) with the real model
 - [ ] Day 3: Streamlit app, live demo, demo GIF
-- [ ] v2: live news (GDELT), real geocoding, deployment on GCP (Cloud Run + Vertex AI)
+- [x] Free model backends (Gemini free tier, Ollama) and a per-run call cap
+- [ ] GCP deployment at £0: Cloud Run Job + Cloud Scheduler + BigQuery, Terraform, budget alert, max 1 instance
+- [ ] v2: live news (GDELT), real geocoding

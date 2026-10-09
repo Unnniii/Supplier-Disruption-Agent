@@ -4,10 +4,10 @@ Each contract is split into clauses (blank-line separated paragraphs), because a
 clause is the unit people cite: "contract_S004.txt#2 says Wroclaw covers door
 harness only". Chunk ids look like `contract_S004.txt#2`.
 
-Two retrievers share one interface:
-- ChromaRetriever: embeddings + vector search (the real RAG path)
+Retrievers share one interface:
+- ChromaRetriever + GeminiEmbedder: free Gemini embeddings, Chroma vector search (default)
+- ChromaRetriever alone: Chroma's own local embedding model
 - KeywordRetriever: BM25, no downloads, used offline and in tests
-`get_retriever()` picks Chroma when it is installed, unless SDA_RETRIEVER says otherwise.
 """
 
 from __future__ import annotations
@@ -85,28 +85,66 @@ class KeywordRetriever:
                 for s, c in scored[:k]]
 
 
-class ChromaRetriever:
-    name = "chroma-embeddings"
+class GeminiEmbedder:
+    """Gemini Embedding (free tier). Documents and questions are embedded with
+    different task types, which is what the model is trained for."""
 
-    def __init__(self) -> None:
+    name = "gemini"
+
+    def __init__(self, client=None) -> None:
+        if client is None:
+            from google import genai
+            client = genai.Client()
+        self._client = client
+
+    def _embed(self, texts: list[str], task: str) -> list[list[float]]:
+        from google.genai import types
+
+        from agent.llm import _retry_on_rate_limit
+        out = []
+        for i in range(0, len(texts), 50):  # batch to stay inside request limits
+            resp = _retry_on_rate_limit(lambda batch=texts[i:i + 50]: self._client.models.embed_content(
+                model=config.EMBED_MODEL, contents=batch,
+                config=types.EmbedContentConfig(task_type=task, output_dimensionality=768)))
+            out.extend(e.values for e in resp.embeddings)
+        return out
+
+    def documents(self, texts: list[str]) -> list[list[float]]:
+        return self._embed(texts, "RETRIEVAL_DOCUMENT")
+
+    def query(self, text: str) -> list[float]:
+        return self._embed([text], "RETRIEVAL_QUERY")[0]
+
+
+class ChromaRetriever:
+    """Vector search in Chroma. With an embedder (Gemini) the vectors are made by
+    us; without one Chroma uses its default local model (downloads ~80 MB once)."""
+
+    def __init__(self, embedder: GeminiEmbedder | None = None) -> None:
         import chromadb
 
+        self.embedder = embedder
+        self.name = f"chroma+{embedder.name}" if embedder else "chroma+default"
         client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
-        self.col = client.get_or_create_collection("contracts", metadata={"hnsw:space": "cosine"})
+        col_name = f"contracts_{embedder.name}" if embedder else "contracts"
+        self.col = client.get_or_create_collection(col_name, metadata={"hnsw:space": "cosine"})
         chunks = load_chunks()
-        if self.col.count() != len(chunks):  # (re)index when contracts change
+        if self.col.count() != len(chunks):  # (re)index only when contracts change: saves free quota
             existing = self.col.get()["ids"]
             if existing:
                 self.col.delete(ids=existing)
-            self.col.add(
-                ids=[c.chunk_id for c in chunks],
-                documents=[c.text for c in chunks],
-                metadatas=[{"supplier_id": c.supplier_id} for c in chunks],
-            )
+            kwargs = {}
+            if embedder:
+                kwargs["embeddings"] = embedder.documents([c.text for c in chunks])
+            self.col.add(ids=[c.chunk_id for c in chunks], documents=[c.text for c in chunks],
+                         metadatas=[{"supplier_id": c.supplier_id} for c in chunks], **kwargs)
 
     def search(self, query, k=4, supplier_id=None):
         where = {"supplier_id": supplier_id} if supplier_id else None
-        res = self.col.query(query_texts=[query], n_results=k, where=where)
+        if self.embedder:
+            res = self.col.query(query_embeddings=[self.embedder.query(query)], n_results=k, where=where)
+        else:
+            res = self.col.query(query_texts=[query], n_results=k, where=where)
         out = []
         for cid, doc, meta, dist in zip(res["ids"][0], res["documents"][0], res["metadatas"][0], res["distances"][0]):
             out.append({"chunk_id": cid, "supplier_id": meta["supplier_id"], "score": round(1 - dist, 3), "text": doc})
@@ -115,13 +153,22 @@ class ChromaRetriever:
 
 @lru_cache(maxsize=1)
 def get_retriever() -> Retriever:
+    """auto: Gemini embeddings if a key is set, else Chroma's local model, else BM25."""
+    import os
+    import sys
+
     choice = config.RETRIEVER
-    if choice in ("auto", "chroma"):
+    attempts = {
+        "gemini": [lambda: ChromaRetriever(GeminiEmbedder())],
+        "chroma": [ChromaRetriever],
+        "keyword": [],
+        "auto": ([lambda: ChromaRetriever(GeminiEmbedder())] if os.getenv("GEMINI_API_KEY") else []) + [ChromaRetriever],
+    }[choice]
+    for build in attempts:
         try:
-            return ChromaRetriever()
-        except Exception as e:  # not installed, or embedding model could not download
-            if choice == "chroma":
+            return build()
+        except Exception as e:  # not installed, no key, or model download blocked
+            if choice != "auto":
                 raise
-            import sys
-            print(f"[rag] Chroma unavailable ({type(e).__name__}); using keyword retriever", file=sys.stderr)
+            print(f"[rag] retriever unavailable ({type(e).__name__}: {str(e)[:80]}); trying next", file=sys.stderr)
     return KeywordRetriever()
