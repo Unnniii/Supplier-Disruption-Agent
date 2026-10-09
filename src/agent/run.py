@@ -1,0 +1,107 @@
+"""Run the morning scan.
+
+    uv run python -m agent.run --fake            # offline, free, rule-based stand-in
+    uv run python -m agent.run                    # real Claude (needs ANTHROPIC_API_KEY)
+    uv run python -m agent.run --news N01 N07     # only some headlines
+
+Every run appends one line per headline to logs/runs.jsonl (inputs, decisions,
+tokens, cost, time), so any alert can be traced back afterwards.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import time
+import uuid
+from datetime import datetime, timezone
+
+from agent import config
+from agent.graph import build_graph, run_news
+
+
+def load_news(ids: list[str] | None) -> list[dict]:
+    news = json.loads((config.ROOT / "data" / "news.json").read_text())
+    return [n for n in news if not ids or n["news_id"] in ids]
+
+
+def make_llm(fake: bool):
+    if fake:
+        from agent.fake import FakeLLM
+        return FakeLLM()
+    from agent.llm import ClaudeLLM
+    return ClaudeLLM()
+
+
+def scan(news_items: list[dict], fake: bool, log: bool = True) -> list[dict]:
+    llm = make_llm(fake)
+    graph = build_graph(llm)
+    run_id = uuid.uuid4().hex[:8]
+    results = []
+    for item in news_items:
+        t0 = time.perf_counter()
+        state = run_news(graph, item)
+        tokens_in = sum(u.get("input_tokens", 0) for u in state.get("usage", []))
+        tokens_out = sum(u.get("output_tokens", 0) for u in state.get("usage", []))
+        record = {
+            "run_id": run_id,
+            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "model": llm.model,
+            "prompt_version": "v1",
+            "news_id": item["news_id"],
+            "headline": item["headline"],
+            "status": state.get("status"),
+            "error": state.get("error"),
+            "scan": state.get("scan"),
+            "suppliers": state.get("suppliers", []),
+            "impact": state.get("impact"),
+            "advice": state.get("advice"),
+            "issues": state.get("issues", []),
+            "revisions": state.get("revisions", 0),
+            "usage": state.get("usage", []),
+            "input_tokens": tokens_in,
+            "output_tokens": tokens_out,
+            "cost_usd": round(config.cost_usd(llm.model, tokens_in, tokens_out), 6),
+            "seconds": round(time.perf_counter() - t0, 2),
+        }
+        results.append(record)
+        if log:
+            config.LOG_PATH.parent.mkdir(exist_ok=True)
+            with config.LOG_PATH.open("a") as f:
+                f.write(json.dumps(record, default=str) + "\n")
+    return results
+
+
+def print_alerts(results: list[dict]) -> None:
+    for r in results:
+        if r["status"] in ("no_disruption", "no_exposure"):
+            print(f"[{r['news_id']}] {r['status']:<13} {r['headline']}")
+            continue
+        print(f"\n[{r['news_id']}] {r['status'].upper()}  {r['headline']}")
+        if r["error"]:
+            print(f"    error: {r['error']}")
+            continue
+        impacts = {i["supplier_id"]: i for i in (r["impact"] or {}).get("impacts", [])}
+        advice = {a["supplier_id"]: a for a in (r["advice"] or {}).get("advice", [])}
+        for s in r["suppliers"]:
+            i = impacts.get(s["supplier_id"], {})
+            a = advice.get(s["supplier_id"], {})
+            print(f"    {s['supplier_id']} {s['name']:<32} risk={i.get('risk_level', '?'):<6} "
+                  f"min cover={i.get('min_days_of_cover', '?')}d  backup={a.get('backup_supplier_id')} "
+                  f"({a.get('coverage', '?')})  cites={','.join(a.get('citations', []))}")
+        for issue in r["issues"]:
+            print(f"    ! {issue}")
+    total = sum(r["cost_usd"] for r in results)
+    print(f"\n{len(results)} headlines, cost ${total:.4f}")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--fake", action="store_true", help="offline rule-based model, no API key, no cost")
+    ap.add_argument("--news", nargs="*", help="news ids to run (default: all)")
+    args = ap.parse_args()
+    print_alerts(scan(load_news(args.news), args.fake))
+
+
+if __name__ == "__main__":
+    main()

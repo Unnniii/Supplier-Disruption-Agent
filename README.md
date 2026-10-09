@@ -4,20 +4,37 @@ An AI agent that reads the news, works out which suppliers a disruption hits, ch
 
 It runs against the ERP of **Northgate Motors**, a fictional car maker with two UK plants. The news includes **real past disruptions** (the 2021 Suez blockage, the 2021 Renesas chip fire, the 2011 Thailand floods, the 2011 Tohoku earthquake, the 2022 Shanghai lockdown and others), replayed against today's supplier base, plus irrelevant headlines and deliberate traps.
 
-> Status: Day 1 of 3. Data, answer key and deterministic tools are done and tested. The LangGraph agent is next.
+> Status: Day 1 done. Data, answer key, four agents, orchestration and tests are built and pass offline. Next: evaluation with the real model.
 
-## How it works (planned)
+## The agents
+
+| Agent | Job | Tools it can use | Output |
+|---|---|---|---|
+| **Scanner** | Is this headline a disruption? What type, where, which route or port? | none | `ScanResult` |
+| **Mapper** | Which of our suppliers are exposed? | ERP lookups: suppliers near a place, on a route, using a port | `MapResult` |
+| **Impact analyst** | How bad is it? Days of stock cover, critical parts, vehicle models | parts and stock, open purchase orders | `ImpactResult` |
+| **Contract advisor** | What does the contract say? Backup supplier, notice period, buffer stock | contract search (RAG) | `AdviceResult` with citations |
+| **Verifier** | Are the advisor's claims backed by clauses it actually retrieved? | plain code, no LLM | approve, send back once, or flag for review |
+
+Each agent has its own instructions, its own tools and its own output schema. An agent only sees the tools it needs, so the Scanner cannot query the ERP and the Mapper cannot read contracts.
+
+## Orchestration (LangGraph)
 
 ```text
-news.json
-  -> Scan    (LLM)    is this a disruption? what type, where, which route or port?
-  -> Map     (Python) which suppliers are inside the event's radius, on that route, or using that port?
-  -> Impact  (SQL)    which parts, which vehicle models, how many days of stock left?
-  -> Advise  (LLM + RAG over contracts) backup supplier, notice period, stock held, with citations
-  -> alert
+scanner --(not a disruption)------------------------------> END
+   |
+mapper  --(no supplier exposed)---------------------------> END
+   |
+impact -> advisor -> verifier --(issues, first time)--> advisor
+                         |
+                         +--(approved, or out of revisions)--> END
 ```
 
-The LLM is used only where judgement is needed (reading news, writing advice). Matching suppliers and counting stock are plain code, so they are cheap, testable and repeatable.
+- Early exits keep cost down: in the answer key, 11 of the 20 headlines should stop after the Scanner or Mapper.
+- The Mapper can only report suppliers the ERP tools returned; invented IDs are dropped.
+- The math is not done by the LLM. Distances, radii and days of cover are plain Python and SQL.
+- A failing agent marks that headline `error` and the batch carries on.
+- Every headline is logged to `logs/runs.jsonl` with each agent's tokens, tool calls, time and cost.
 
 ## The data
 
@@ -53,17 +70,30 @@ Other inputs:
 
 ```bash
 uv sync
-cp .env.example .env          # add your API key
 uv run python scripts/seed_erp.py
-uv run pytest
+uv run pytest                                   # 28 tests, offline, free
+uv run python -m agent.run --fake               # whole pipeline with a rule-based stand-in model
+cp .env.example .env                            # add ANTHROPIC_API_KEY
+uv run python -m agent.run                      # real run with Claude Haiku 5.5
+uv run python -m agent.run --news N01 N07       # just some headlines
 ```
 
-The tests check data integrity and that the deterministic Map step reaches the answer key when given a correct event. If they pass, any later evaluation miss comes from the LLM, not from the data.
+The first real run downloads a small embedding model for Chroma (~80 MB). If that fails, the contract search falls back to keyword (BM25) retrieval and says so.
+
+**What the tests cover:** data integrity, the Map step reaching the answer key, routing and early exits, the tool loop's turn limit and unknown-tool handling, the verifier's checks, the advisor revise loop, and failure isolation.
+
+**`--fake` mode is a floor, not a result.** It is keyword matching that never reads the answer key. It exists so the pipeline can be tested without cost. Real accuracy numbers come from the evaluation with Claude.
+
+## Known gaps (honest list)
+
+- The verifier checks that a cited clause names the backup, not that the backup is in the right direction. For example, Taichung's contract names Hitachinaka because Taichung is Hitachinaka's backup. A model could misread that as "Hitachinaka is Taichung's backup" and pass the check.
+- When the Scanner names both a country and a city, a wide radius (war: 600 km) from the city can catch suppliers in neighbouring countries. The evaluation will show how often this happens.
+- The Chroma path has not been run in the build sandbox (model download blocked there); the keyword path is what the tests exercise.
 
 ## Roadmap
 
 - [x] Day 1: fake ERP, news, contracts, answer key, deterministic tools, tests
-- [ ] Day 1-2: RAG over contracts (Chroma), LangGraph flow (Scan, Map, Impact, Advise)
-- [ ] Day 2: evaluation script (precision, recall, contract retrieval hit rate, cost per run), run logs
+- [x] Day 1: RAG over contracts, four agents + verifier, LangGraph orchestration, run logs
+- [ ] Day 2: evaluation script (precision, recall, contract retrieval hit rate, cost per run) with the real model
 - [ ] Day 3: Streamlit app, live demo, demo GIF
 - [ ] v2: live news (GDELT), real geocoding, deployment on GCP (Cloud Run + Vertex AI)

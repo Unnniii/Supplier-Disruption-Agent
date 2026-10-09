@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Agent that reads news, maps disruptions to suppliers in an ERP, and flags at-risk parts with contract-backed advice"
 requires-python = ">=3.12"
 dependencies = [
-    "langgraph>=0.2",
+    "langgraph>=1.0",
     "chromadb>=0.5",
     "anthropic>=0.40",
     "streamlit>=1.38",

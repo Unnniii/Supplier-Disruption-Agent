@@ -70,6 +70,11 @@ def suppliers_near(place: str, event_type: str) -> list[dict]:
     return sorted(hits, key=lambda r: r["distance_km"])
 
 
+def all_suppliers() -> list[dict]:
+    with _connect() as con:
+        return [dict(r) for r in con.execute("SELECT * FROM suppliers ORDER BY supplier_id")]
+
+
 def suppliers_on_route(route: str) -> list[dict]:
     with _connect() as con:
         return [dict(r) for r in con.execute(
