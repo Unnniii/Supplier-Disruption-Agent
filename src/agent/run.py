@@ -5,6 +5,11 @@
     SDA_PROVIDER=ollama uv run python -m agent.run   # local model, free, offline
     uv run python -m agent.run --news N01 N07     # only some headlines
     uv run python -m agent.run --live             # today's real headlines from GDELT (not scored)
+    uv run python -m agent.run --resume           # finish the latest run: redo only errored/missing headlines
+
+If the call cap or the provider's daily quota is hit, the run stops at once and
+the unfinished headlines are not logged; `--resume` picks them up later under
+the same run id, so `agent.evaluate` scores one complete run.
 
 Every run appends one line per headline to logs/runs.jsonl (inputs, decisions,
 tokens, cost, time), so any alert can be traced back afterwards.
@@ -20,7 +25,7 @@ from datetime import datetime, timezone
 
 from agent import config
 from agent.graph import build_graph, run_news
-from agent.llm import make_llm
+from agent.llm import CapExceeded, QuotaExhausted, make_llm
 
 
 def load_news(ids: list[str] | None) -> list[dict]:
@@ -28,17 +33,41 @@ def load_news(ids: list[str] | None) -> list[dict]:
     return [n for n in news if not ids or n["news_id"] in ids]
 
 
-def scan(news_items: list[dict], fake: bool, log: bool = True, progress: bool = False) -> list[dict]:
+def unfinished(run_id: str | None = None) -> tuple[str, list[str]]:
+    """Latest (or given) run id, and the headlines it has not finished: missing
+    from the log, or whose last attempt ended in error."""
+    if not config.LOG_PATH.exists():
+        raise SystemExit("No runs yet: nothing to resume.")
+    rows = [json.loads(line) for line in config.LOG_PATH.read_text().splitlines() if line.strip()]
+    run_id = run_id or rows[-1]["run_id"]
+    last = {r["news_id"]: r for r in rows if r["run_id"] == run_id}
+    if not last:
+        raise SystemExit(f"run_id {run_id} not found in {config.LOG_PATH}")
+    if any(r.get("kind") == "live" for r in last.values()):
+        raise SystemExit("Live runs cannot be resumed (the headlines were today's).")
+    todo = [n["news_id"] for n in load_news(None)
+            if n["news_id"] not in last or last[n["news_id"]]["status"] == "error"]
+    return run_id, todo
+
+
+def scan(news_items: list[dict], fake: bool, log: bool = True, progress: bool = False,
+         run_id: str | None = None) -> list[dict]:
     llm = make_llm("fake" if fake else None)
     graph = build_graph(llm)
-    run_id = uuid.uuid4().hex[:8]
+    run_id = run_id or uuid.uuid4().hex[:8]
     results = []
     if progress:
         print(f"Run {run_id}: {len(news_items)} headlines with {llm.model} "
               f"(cap {llm.max_calls} model calls). Progress prints as each headline finishes.", flush=True)
     for n, item in enumerate(news_items, 1):
         t0 = time.perf_counter()
-        state = run_news(graph, item)
+        try:
+            state = run_news(graph, item)
+        except (CapExceeded, QuotaExhausted) as e:
+            left = len(news_items) - n + 1
+            print(f"\nStopped: {e}. {left} headline(s) not run and not logged.\n"
+                  f"Finish later with:  uv run python -m agent.run --resume", flush=True)
+            break
         tokens_in = sum(u.get("input_tokens", 0) for u in state.get("usage", []))
         tokens_out = sum(u.get("output_tokens", 0) for u in state.get("usage", []))
         record = {
@@ -113,14 +142,24 @@ def main() -> None:
     ap.add_argument("--news", nargs="*", help="news ids to run (default: all)")
     ap.add_argument("--live", action="store_true", help="read the last 24h of real headlines from GDELT instead")
     ap.add_argument("--max-live", type=int, default=15, help="cap on live headlines per run (protects the free quota)")
+    ap.add_argument("--resume", nargs="?", const="latest", metavar="RUN_ID",
+                    help="redo only the errored or missing headlines of the latest (or given) run")
     args = ap.parse_args()
-    if args.live:
+    run_id = None
+    if args.resume:
+        run_id, todo = unfinished(None if args.resume == "latest" else args.resume)
+        if not todo:
+            print(f"Run {run_id} is already complete. Score it with: uv run python -m agent.evaluate")
+            return
+        print(f"Resuming run {run_id}: {len(todo)} headline(s) left: {' '.join(todo)}")
+        news = load_news(todo)
+    elif args.live:
         from agent.live import fetch_live_news
         news = fetch_live_news(limit=args.max_live)
         print(f"Fetched {len(news)} live headlines (saved to data/live/)")
     else:
         news = load_news(args.news)
-    results = scan(news, args.fake, progress=True)
+    results = scan(news, args.fake, progress=True, run_id=run_id)
     print("\n===== Alerts =====")
     print_alerts(results)
     if args.live:

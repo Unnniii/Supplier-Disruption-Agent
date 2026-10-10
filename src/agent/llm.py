@@ -14,6 +14,7 @@ text, tool_use, tool_result). Each adapter translates to its own API.
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -77,17 +78,44 @@ def _tool_names(messages: list[dict[str, Any]]) -> dict[str, str]:
     return names
 
 
+class QuotaExhausted(RuntimeError):
+    """The provider's daily quota is used up. Retrying wastes time; stop the run."""
+
+
+def _status(e: Exception) -> int | None:
+    status = getattr(e, "code", None) or getattr(e, "status_code", None)
+    if isinstance(status, int):
+        return status
+    head = str(e)[:200]
+    for code in (429, 503):
+        if str(code) in head:
+            return code
+    return None
+
+
+def _daily_quota_hit(e: Exception) -> bool:
+    """A per-day quota 429 (Gemini: quotaId ...PerDay..., or a retry delay in hours)."""
+    msg = str(e)
+    return "PerDay" in msg or bool(re.search(r"retry in \d+h", msg))
+
+
 def _retry_on_rate_limit(fn):
-    """Free tiers answer 429 when the per-minute quota is used; wait and retry."""
+    """Per-minute 429 and 503 'overloaded' are temporary: wait and retry.
+    A per-day 429 is not: raise QuotaExhausted at once so the run stops cleanly."""
     for attempt in range(config.RATE_LIMIT_RETRIES + 1):
         try:
             return fn()
-        except Exception as e:  # SDKs use different exception classes for 429
-            status = getattr(e, "code", None) or getattr(e, "status_code", None)
-            if status != 429 and "429" not in str(e)[:200] or attempt == config.RATE_LIMIT_RETRIES:
+        except Exception as e:  # SDKs use different exception classes
+            status = _status(e)
+            if status == 429 and _daily_quota_hit(e):
+                m = re.search(r"retry in ([\dhms.]+)", str(e))
+                when = f"; it resets in about {m.group(1)}" if m else ""
+                raise QuotaExhausted(f"daily free-tier quota for this model is used up{when}") from e
+            if status not in (429, 503) or attempt == config.RATE_LIMIT_RETRIES:
                 raise
             wait = min(60, 5 * 2 ** attempt)
-            print(f"    rate limited by the free tier; waiting {wait}s and retrying "
+            reason = "rate limited by the free tier" if status == 429 else "model overloaded (503)"
+            print(f"    {reason}; waiting {wait}s and retrying "
                   f"({attempt + 1}/{config.RATE_LIMIT_RETRIES})", flush=True)
             time.sleep(wait)
 

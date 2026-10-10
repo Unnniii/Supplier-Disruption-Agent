@@ -33,13 +33,29 @@ def test_cap_stops_calls_after_limit():
         llm.complete(agent="scanner", system="", messages=msg)
 
 
-def test_cap_hit_mid_batch_marks_remaining_headlines_error(monkeypatch):
-    monkeypatch.setattr("agent.config.MAX_LLM_CALLS_PER_RUN", 3)
+def test_cap_hit_mid_batch_stops_without_logging_unfinished(monkeypatch):
+    monkeypatch.setattr("agent.config.MAX_LLM_CALLS_PER_RUN", 30)
     results = scan(load_news(None), fake=True, log=False)
-    errors = [r for r in results if r["status"] == "error"]
-    assert errors, "cap should have stopped the run"
-    assert all("call cap" in r["error"] for r in errors)
-    assert len(results) == len(load_news(None))  # the batch still finishes and logs every headline
+    assert 0 < len(results) < len(load_news(None))       # stopped early
+    assert not any(r["status"] == "error" for r in results)  # unfinished ones are not scored as wrong
+
+
+def test_resume_reruns_only_unfinished_headlines_under_same_run_id(tmp_path, monkeypatch):
+    from agent import run as run_mod
+    monkeypatch.setattr("agent.config.LOG_PATH", tmp_path / "runs.jsonl")
+    first = scan(load_news(["N01", "N02", "N03"]), fake=True)
+    rid = first[0]["run_id"]
+    # pretend N02 errored and N04.. were never reached
+    rows = [json.loads(x) for x in (tmp_path / "runs.jsonl").read_text().splitlines()]
+    rows[1]["status"] = "error"
+    (tmp_path / "runs.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    got_id, todo = run_mod.unfinished()
+    assert got_id == rid
+    assert "N02" in todo and "N01" not in todo and "N03" not in todo and "N04" in todo
+    scan(load_news(["N02"]), fake=True, run_id=rid)
+    from agent.evaluate import load_run
+    merged = {r["news_id"]: r for r in load_run(rid)}
+    assert merged["N02"]["status"] != "error"            # last attempt wins
 
 
 # --- Gemini ---------------------------------------------------------------------
@@ -117,6 +133,55 @@ def test_rate_limit_is_retried(monkeypatch):
     resp = GeminiLLM(model="m", client=Flaky([_answer_turn()])).complete(
         agent="mapper", system="s", messages=[{"role": "user", "content": "hi"}])
     assert calls["n"] == 2 and "S001" in resp.text
+
+
+def test_daily_quota_stops_at_once_without_retrying(monkeypatch):
+    from agent.llm import QuotaExhausted
+    slept = []
+    monkeypatch.setattr("agent.llm.time.sleep", slept.append)
+
+    class Daily(FakeGeminiClient):
+        def generate_content(self, **kw):
+            raise RuntimeError("429 RESOURCE_EXHAUSTED. Quota exceeded ... quotaId: "
+                               "GenerateRequestsPerDayPerProjectPerModel-FreeTier ... Please retry in 4h44m25s.")
+
+    with pytest.raises(QuotaExhausted, match="4h44m25s"):
+        GeminiLLM(model="m", client=Daily([])).complete(agent="mapper", system="s",
+                                                        messages=[{"role": "user", "content": "hi"}])
+    assert slept == []                                    # no wasted waiting
+
+
+def test_503_overload_is_retried(monkeypatch):
+    monkeypatch.setattr("agent.llm.time.sleep", lambda s: None)
+    calls = {"n": 0}
+
+    class Busy(FakeGeminiClient):
+        def generate_content(self, **kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("503 UNAVAILABLE. The model is overloaded.")
+            return super().generate_content(**kw)
+
+    resp = GeminiLLM(model="m", client=Busy([_answer_turn()])).complete(
+        agent="mapper", system="s", messages=[{"role": "user", "content": "hi"}])
+    assert calls["n"] == 2 and "S001" in resp.text
+
+
+def test_daily_quota_mid_batch_stops_the_run(monkeypatch):
+    from agent.llm import QuotaExhausted
+    n = {"calls": 0}
+    real = FakeLLM.complete
+
+    def flaky(self, **kw):
+        n["calls"] += 1
+        if n["calls"] > 30:
+            raise QuotaExhausted("daily free-tier quota for this model is used up")
+        return real(self, **kw)
+
+    monkeypatch.setattr(FakeLLM, "complete", flaky)
+    results = scan(load_news(None), fake=True, log=False)
+    assert 0 < len(results) < len(load_news(None))
+    assert not any(r["status"] == "error" for r in results)
 
 
 # --- Ollama ---------------------------------------------------------------------

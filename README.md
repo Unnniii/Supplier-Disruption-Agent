@@ -53,7 +53,7 @@ impact -> advisor -> verifier --(issues, first time)--> advisor
 
 Switching provider is a setting, not a code change: every agent talks to one `LLM` interface and each adapter translates to its own API (`src/agent/llm.py`). The tool-use loop is ours on every provider, so logging, the cap and error handling behave the same everywhere.
 
-**The cap.** Every run is wrapped in `CappedLLM`. After `SDA_MAX_LLM_CALLS` model calls (default 200; the offline 20-headline scan makes 80, and a real model takes extra tool turns) the run stops, the remaining headlines are logged as `error: call cap reached`, and nothing else is spent. Free-tier `429` rate limits are retried with backoff. Contract embeddings are computed once and stored in Chroma, so re-runs do not spend embedding quota.
+**The cap.** Every run is wrapped in `CappedLLM`. After `SDA_MAX_LLM_CALLS` model calls (default 300) the run stops cleanly and nothing else is spent. Per-minute `429` rate limits and `503` overloads are retried with backoff. A *daily* quota `429` (the Gemini free tier allows about 500 requests per model per day) is not retried: the run stops at once and tells you when it resets. Either way, `uv run python -m agent.run --resume` later finishes only the unfinished headlines under the same run id, so `agent.evaluate` scores one complete run. Contract embeddings are computed once and stored in Chroma, so re-runs do not spend embedding quota.
 
 **Free-tier caveats, stated plainly.** Google may use free-tier inputs to improve its products; all data in this project is fictional, so that is acceptable here. Google's terms restrict the free tier for apps *serving* users in the UK and EEA; this repo is a personal demo, and `ollama` is the fully local alternative.
 

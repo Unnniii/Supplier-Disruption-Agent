@@ -9,7 +9,8 @@
                              +--(approved, or out of revisions)--> END
 
 Each node catches its own failure and marks the run 'error' instead of crashing
-the batch, so one bad news item never stops the morning scan.
+the batch, so one bad news item never stops the morning scan. The exceptions are
+run-level limits (call cap, daily quota): those stop the whole batch.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, StateGraph
 
 from agent import agents, config, erp
-from agent.llm import LLM
+from agent.llm import LLM, CapExceeded, QuotaExhausted
 
 
 class RunState(TypedDict, total=False):
@@ -44,6 +45,8 @@ def build_graph(llm: LLM):
         def node(state: RunState) -> RunState:
             try:
                 return fn(state)
+            except (CapExceeded, QuotaExhausted):
+                raise  # run-level limits: stop the batch, don't mark headlines as wrong
             except Exception as e:
                 return {"status": "error", "error": f"{name}: {type(e).__name__}: {e}",
                         "usage": state.get("usage", []) + [{"agent": name, "traceback": traceback.format_exc(limit=3)}]}

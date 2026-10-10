@@ -2,6 +2,12 @@
 
 Every bug, wrong assumption and process failure, with what caught it. Newest first.
 
+## 2026-10-11: second full run hit the daily quota
+
+| What went wrong | What caught it | Fix |
+|---|---|---|
+| The rerun stopped scoring at N23: the Gemini free tier allows 500 requests per model per day, and two full runs in one day used it up. The retry logic treated the daily limit like the per-minute one, so it waited about 75 seconds per headline before failing each of the last 12, and marked them `error`, which would have scored as model mistakes. | The user's run output. | A daily-quota `429` now stops the run at once and says when it resets. `503` overloads are retried. Unfinished headlines are not logged, and `agent.run --resume` finishes them later under the same run id, so the evaluation scores one complete run. The call cap stops the run the same way. |
+
 ## 2026-10-10: first full Gemini run (34 headlines)
 
 | What went wrong | What caught it | Fix |
