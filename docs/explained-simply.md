@@ -105,6 +105,7 @@ This project is a team of robot helpers that read the news every morning and sho
 |---|---|
 | `docs/corrections.md` | The "what went wrong and how I fixed it" diary. Interviewers love this. |
 | `docs/explained-simply.md` | This file. |
+| `docs/architecture.png` / `.svg` | The one-picture overview of the whole system, shown at the top of the README. |
 
 ### Made when you run it (not uploaded to GitHub)
 

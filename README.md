@@ -7,6 +7,8 @@ It runs against the ERP of **Northgate Motors**, a fictional car maker with two 
 - **Replay (scored):** 34 headlines, 21 of them real disruptions from 2011 to 2025 (Suez blockage, Renesas chip fire, Thailand floods, Tohoku earthquake, Shanghai lockdown, Red Sea attacks, Panama Canal drought, Baltimore bridge collapse, Hurricane Helene at Spruce Pine, Valencia floods, Typhoon Yagi, Hualien earthquake, China's rare earth magnet licences, the Nexperia chip export ban, the Oswego aluminium mill fire), plus non-events and deliberate traps. Every headline has a hand-written answer key, so accuracy is measured, not claimed.
 - **Live (daily):** today's real headlines from GDELT, a free global news index, run through the same agents. Live results cannot be scored, because nobody has written the answer key for today.
 
+![Architecture: news in, four AI agents orchestrated by LangGraph, plain-code tools and data, a code verifier, alerts and logs, scored against a hand-written answer key](docs/architecture.png)
+
 > Status: agents, evaluation and live mode are built and tested offline (61 tests). A first 3-headline run on Gemini found bugs, now fixed and logged in [docs/corrections.md](docs/corrections.md). Next: the full scored run on Gemini, and its results in this README.
 
 ## The agents
