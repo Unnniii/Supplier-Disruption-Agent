@@ -2,6 +2,13 @@
 
 Every bug, wrong assumption and process failure, with what caught it. Newest first.
 
+## 2026-10-10: first full Gemini run (34 headlines)
+
+| What went wrong | What caught it | Fix |
+|---|---|---|
+| The Advisor recommended backups that were hit by the same event: Taichung as Hsinchu's backup in the Hualien earthquake, Ganzhou as Baotou's backup under the same Chinese export licences, and Taichung for Hitachinaka and Hsinchu on the blocked Suez lane. Every one was "correct" against the contracts, so the score did not catch it. | Reading the alerts, not just the score. | `correlated_backups()` in code flags any backup that is itself on the exposed list, the alert prints a warning, the Advisor is told which suppliers are hit, and the evaluation now counts unwarned correlated backups. |
+| A full run took about 20 minutes and printed nothing until the end, which looked like a hang. | The user's first full run. | Progress line per headline, rate-limit waits and first-time indexing are printed as they happen. |
+
 ## 2026-10-10: data expansion and evaluation
 
 | What changed or went wrong | What caught it | Fix |

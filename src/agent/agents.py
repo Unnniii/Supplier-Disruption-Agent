@@ -153,7 +153,10 @@ Rules:
 - coverage: full = backup covers all parts, partial = some parts only, none = contract says
   no second source, unknown = no clause found.
 - Every advice item must cite the chunk_ids it relies on.
-- actions: 2-4 short, concrete next steps for the buyer, grounded in the clauses."""
+- actions: 2-4 short, concrete next steps for the buyer, grounded in the clauses.
+- The input lists every supplier hit by this event. If a backup named in a contract is
+  on that list, it is hit too: still report it as the contractual backup, but say in
+  `actions` that it does not protect against this event and what to do instead."""
 
 
 def scanner(llm: LLM, news: dict) -> AgentRun:
@@ -173,7 +176,8 @@ def impact(llm: LLM, supplier_ids: list[str]) -> AgentRun:
 
 
 def advisor(llm: LLM, suppliers: list[dict], issues: list[str] | None = None) -> AgentRun:
-    payload: dict[str, Any] = {"suppliers": suppliers}
+    payload: dict[str, Any] = {"suppliers": suppliers,
+                               "all_suppliers_hit_by_this_event": [s["supplier_id"] for s in suppliers]}
     if issues:
         payload["verifier_issues_to_fix"] = issues
     return run_tool_agent(llm, agent="advisor", system=ADVISOR_SYSTEM, payload=payload,
@@ -212,6 +216,17 @@ def check_impact(impact: ImpactResult) -> tuple[dict, list[str]]:
                     "parts": [{k: r[k] for k in ("part_id", "part_name", "plant_id", "days_of_cover",
                                                  "is_critical", "used_in_models")} for r in parts]})
     return {"impacts": out}, disagreements
+
+
+def correlated_backups(advice: AdviceResult, exposed: list[str]) -> list[dict]:
+    """A backup that is hit by the same event is not a backup for this event.
+    Found in the first full Gemini run: Taichung recommended as Hsinchu's backup
+    in the same earthquake; Ganzhou as Baotou's backup under the same export ban."""
+    hit = set(exposed)
+    return [{"supplier_id": a.supplier_id, "backup_supplier_id": a.backup_supplier_id,
+             "warning": f"backup {a.backup_supplier_id} for {a.supplier_id} is hit by the same event; "
+                        "it does not protect against this disruption"}
+            for a in advice.advice if a.backup_supplier_id and a.backup_supplier_id in hit]
 
 
 # --- Verifier (code, not an LLM) -----------------------------------------------

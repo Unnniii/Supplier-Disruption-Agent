@@ -224,3 +224,32 @@ def test_live_news_falls_back_to_simpler_query(tmp_path, monkeypatch):
 
     news = live.fetch_live_news(limit=3, get=get, sleep=lambda s: None)
     assert len(seen) == 2 and len(news) == 1
+
+
+def test_backup_hit_by_the_same_event_is_warned():
+    """Hualien earthquake: Hsinchu's contractual backup Taichung is in the same quake."""
+    news = load_news(["N27"])[0]
+    scan = _text({"is_disruption": True, "event_type": "earthquake", "places": ["Hualien"]})
+    mapper = [_tool("find_suppliers_near_place", {"place": "Hualien", "event_type": "earthquake"}),
+              _text({"suppliers": [{"supplier_id": "S038", "why": "quake"}, {"supplier_id": "S011", "why": "quake"}]})]
+    impact = [_text({"impacts": [{"supplier_id": "S038", "risk_level": "medium", "min_days_of_cover": 9},
+                                 {"supplier_id": "S011", "risk_level": "medium", "min_days_of_cover": 9}]})]
+    advisor = [_tool("search_contracts", {"query": "second source", "supplier_id": "S038"}),
+               _text({"advice": [{"supplier_id": "S038", "backup_supplier_id": "S011", "coverage": "full",
+                                  "citations": ["contract_S038.txt#1"]},
+                                 {"supplier_id": "S011", "coverage": "unknown"}]})]
+    state = run_news(build_graph(ScriptedLLM({"scanner": [scan], "mapper": mapper, "impact": impact, "advisor": advisor})), news)
+    assert state["status"] == "approved"
+    assert [(w["supplier_id"], w["backup_supplier_id"]) for w in state["backup_warnings"]] == [("S038", "S011")]
+
+
+def test_evaluation_counts_unwarned_correlated_backups():
+    from agent.evaluate import score_run
+    truth = {"news": {"A": {"is_disruption": True, "expected_suppliers": ["S1", "S2"], "acceptable_extra": []}}, "backups": {}}
+    rec = {"news_id": "A", "headline": "a", "status": "approved", "scan": {"is_disruption": True},
+           "suppliers": [{"supplier_id": "S1"}, {"supplier_id": "S2"}],
+           "advice": {"advice": [{"supplier_id": "S1", "backup_supplier_id": "S2", "coverage": "full"}]}}
+    before = score_run([rec], truth)
+    after = score_run([{**rec, "backup_warnings": [{"supplier_id": "S1", "backup_supplier_id": "S2"}]}], truth)
+    assert (before["backups_hit_by_same_event"], before["backups_hit_by_same_event_unwarned"]) == (1, 1)
+    assert (after["backups_hit_by_same_event"], after["backups_hit_by_same_event_unwarned"]) == (1, 0)

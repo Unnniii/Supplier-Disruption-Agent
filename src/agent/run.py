@@ -59,6 +59,7 @@ def scan(news_items: list[dict], fake: bool, log: bool = True, progress: bool = 
             "impact_disagreements": state.get("impact_disagreements", []),
             "advice": state.get("advice"),
             "issues": state.get("issues", []),
+            "backup_warnings": state.get("backup_warnings", []),
             "revisions": state.get("revisions", 0),
             "usage": state.get("usage", []),
             "input_tokens": tokens_in,
@@ -97,6 +98,8 @@ def print_alerts(results: list[dict]) -> None:
                   f"({a.get('coverage', '?')})  cites={','.join(a.get('citations', []))}")
         for issue in r["issues"]:
             print(f"    ! {issue}")
+        for w in r.get("backup_warnings", []):
+            print(f"    ⚠ {w['warning']}")
         for d in r.get("impact_disagreements", []):
             print(f"    ~ impact rating corrected by rule: {d}")
     total = sum(r["cost_usd"] for r in results)

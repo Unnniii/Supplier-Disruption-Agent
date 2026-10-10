@@ -52,6 +52,7 @@ def score_run(records: list[dict], truth: dict) -> dict[str, Any]:
     tp = fp = fn = 0
     scan_ok = scan_n = exact = 0
     backup_ok = coverage_ok = backup_n = 0
+    correlated = correlated_unwarned = 0
     statuses: Counter = Counter()
     per_headline, misses = [], []
     scored = [r for r in records if r["news_id"] in truth["news"]]
@@ -71,7 +72,14 @@ def score_run(records: list[dict], truth: dict) -> dict[str, Any]:
         ok = not h_fn and not h_fp and r["status"] != "error"
         exact += ok
 
+        warned = {(w["supplier_id"], w["backup_supplier_id"]) for w in r.get("backup_warnings", [])}
         for a in (r.get("advice") or {}).get("advice", []):
+            if a.get("backup_supplier_id") in flagged and a["supplier_id"] in flagged:
+                correlated += 1
+                if (a["supplier_id"], a["backup_supplier_id"]) not in warned:
+                    correlated_unwarned += 1
+                    misses.append(f"{r['news_id']} {a['supplier_id']}: recommends backup {a['backup_supplier_id']}, "
+                                  "which is hit by the same event, with no warning")
             key = truth["backups"].get(a["supplier_id"])
             if key and a["supplier_id"] in flagged:
                 backup_n += 1
@@ -106,6 +114,8 @@ def score_run(records: list[dict], truth: dict) -> dict[str, Any]:
         "true_positives": tp, "false_positives": fp, "false_negatives": fn,
         "backup_accuracy": _ratio(backup_ok, backup_n), "coverage_accuracy": _ratio(coverage_ok, backup_n),
         "backup_checks": backup_n,
+        "backups_hit_by_same_event": correlated,
+        "backups_hit_by_same_event_unwarned": correlated_unwarned,
         "statuses": dict(statuses),
         "verifier_revisions": sum(r.get("revisions", 0) for r in scored),
         "impact_rule_corrections": sum(len(r.get("impact_disagreements", [])) for r in scored),
@@ -158,6 +168,8 @@ def render(run: dict, rag: dict | None, meta: dict) -> str:
         f"| Suppliers flagged: recall | {_pct(run['supplier_recall'])} ({run['false_negatives']} missed) |",
         f"| Backup supplier named correctly | {_pct(run['backup_accuracy'])} of {run['backup_checks']} |",
         f"| Backup coverage (full / partial / none) correct | {_pct(run['coverage_accuracy'])} of {run['backup_checks']} |",
+        f"| Backups that are hit by the same event | {run['backups_hit_by_same_event']} "
+        f"({run['backups_hit_by_same_event_unwarned']} recommended with no warning) |",
     ]
     if rag:
         lines += [f"| Contract search: right contract first ({rag['retriever']}) | {_pct(rag['hit_at_1'])} of {rag['questions']} |",

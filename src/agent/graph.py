@@ -32,6 +32,7 @@ class RunState(TypedDict, total=False):
     advice: dict
     retrieved: dict[str, str]      # chunk_id -> text the advisor actually saw
     issues: list[str]
+    backup_warnings: list[dict]    # backups hit by the same event
     revisions: int
     status: str                    # running | no_disruption | no_exposure | approved | needs_review | error
     error: str
@@ -80,14 +81,18 @@ def build_graph(llm: LLM):
 
     def verify_node(state: RunState) -> RunState:
         from agent.schemas import AdviceResult
-        issues = agents.verify(AdviceResult.model_validate(state["advice"]),
-                               [s["supplier_id"] for s in state["suppliers"]], state["retrieved"])
+        advice = AdviceResult.model_validate(state["advice"])
+        exposed = [s["supplier_id"] for s in state["suppliers"]]
+        issues = agents.verify(advice, exposed, state["retrieved"])
+        # Warnings, not issues: the contract really does name that backup, so sending
+        # the advisor back would not change the answer. The alert must carry it.
+        warnings = agents.correlated_backups(advice, exposed)
         revisions = state.get("revisions", 0)
         if not issues:
-            return {"issues": [], "status": "approved"}
+            return {"issues": [], "backup_warnings": warnings, "status": "approved"}
         if revisions < config.MAX_REVISIONS:
             return {"issues": issues, "revisions": revisions + 1, "status": "revising"}
-        return {"issues": issues, "status": "needs_review"}
+        return {"issues": issues, "backup_warnings": warnings, "status": "needs_review"}
 
     def after(state: RunState) -> str:
         return "continue" if state.get("status") in ("running", "revising") else "stop"
