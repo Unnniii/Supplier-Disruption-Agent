@@ -86,7 +86,10 @@ def _retry_on_rate_limit(fn):
             status = getattr(e, "code", None) or getattr(e, "status_code", None)
             if status != 429 and "429" not in str(e)[:200] or attempt == config.RATE_LIMIT_RETRIES:
                 raise
-            time.sleep(min(60, 5 * 2 ** attempt))
+            wait = min(60, 5 * 2 ** attempt)
+            print(f"    rate limited by the free tier; waiting {wait}s and retrying "
+                  f"({attempt + 1}/{config.RATE_LIMIT_RETRIES})", flush=True)
+            time.sleep(wait)
 
 
 # --- Gemini (free tier) ---------------------------------------------------------

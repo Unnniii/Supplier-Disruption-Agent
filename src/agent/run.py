@@ -28,12 +28,15 @@ def load_news(ids: list[str] | None) -> list[dict]:
     return [n for n in news if not ids or n["news_id"] in ids]
 
 
-def scan(news_items: list[dict], fake: bool, log: bool = True) -> list[dict]:
+def scan(news_items: list[dict], fake: bool, log: bool = True, progress: bool = False) -> list[dict]:
     llm = make_llm("fake" if fake else None)
     graph = build_graph(llm)
     run_id = uuid.uuid4().hex[:8]
     results = []
-    for item in news_items:
+    if progress:
+        print(f"Run {run_id}: {len(news_items)} headlines with {llm.model} "
+              f"(cap {llm.max_calls} model calls). Progress prints as each headline finishes.", flush=True)
+    for n, item in enumerate(news_items, 1):
         t0 = time.perf_counter()
         state = run_news(graph, item)
         tokens_in = sum(u.get("input_tokens", 0) for u in state.get("usage", []))
@@ -64,6 +67,10 @@ def scan(news_items: list[dict], fake: bool, log: bool = True) -> list[dict]:
             "seconds": round(time.perf_counter() - t0, 2),
         }
         results.append(record)
+        if progress:
+            print(f"  [{n}/{len(news_items)}] {item['news_id']} {record['status']:<13} "
+                  f"{record['seconds']:>5.1f}s  {len(record['suppliers'])} suppliers  "
+                  f"(model calls so far: {llm.calls})", flush=True)
         if log:
             config.LOG_PATH.parent.mkdir(exist_ok=True)
             with config.LOG_PATH.open("a") as f:
@@ -110,7 +117,8 @@ def main() -> None:
         print(f"Fetched {len(news)} live headlines (saved to data/live/)")
     else:
         news = load_news(args.news)
-    results = scan(news, args.fake)
+    results = scan(news, args.fake, progress=True)
+    print("\n===== Alerts =====")
     print_alerts(results)
     if args.live:
         hits = [r for r in results if r["status"] not in ("no_disruption", "no_exposure")]

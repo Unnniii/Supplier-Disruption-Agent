@@ -144,6 +144,8 @@ class ChromaRetriever:
             if existing:
                 self.col.delete(ids=existing)
             kwargs = {}
+            import sys
+            print(f"[rag] indexing {len(chunks)} contract clauses (first run only)...", file=sys.stderr, flush=True)
             if embedder:
                 kwargs["embeddings"] = embedder.documents([c.text for c in chunks])
             self.col.add(ids=[c.chunk_id for c in chunks], documents=[c.text for c in chunks],
