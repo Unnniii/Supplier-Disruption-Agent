@@ -30,7 +30,7 @@ def offline_results():
 # --- routing ------------------------------------------------------------------
 
 def test_every_headline_reaches_a_terminal_status(offline_results):
-    assert len(offline_results) == 20
+    assert len(offline_results) == len(load_news(None))
     for r in offline_results.values():
         assert r["status"] in {"no_disruption", "no_exposure", "approved", "needs_review"}, r
 
@@ -149,3 +149,78 @@ def test_verifier_rejects_missing_advice_and_uncited_claims():
     issues = agents.verify(advice, ["S001", "S002"], {})
     assert any("S002: no advice" in i for i in issues)
     assert any("no citation" in i for i in issues)
+
+
+# --- live news and evaluation ----------------------------------------------------
+
+def test_live_news_parsing_dedupes_and_caps(tmp_path, monkeypatch):
+    import json as _json
+    from agent import live
+    monkeypatch.setattr(live, "LIVE_DIR", tmp_path)
+    articles = {"articles": [
+        {"title": "Fire halts production at chemical plant near Ludwigshafen", "seendate": "20261010T061500Z",
+         "domain": "example.com", "sourcecountry": "Germany", "url": "https://example.com/a"},
+        {"title": "Fire halts production at chemical plant near Ludwigshafen!", "seendate": "20261010T062000Z",
+         "domain": "other.com", "sourcecountry": "Germany", "url": "https://other.com/a"},
+        {"title": "Short", "seendate": "20261010T000000Z"},
+        {"title": "Typhoon forces closure of factories in southern Taiwan", "seendate": "20261010T070000Z",
+         "domain": "news.tw", "sourcecountry": "Taiwan", "url": "https://news.tw/b"},
+    ]}
+    news = live.fetch_live_news(limit=5, get=lambda params: _json.dumps(articles))
+    assert [n["headline"][:4] for n in news] == ["Fire", "Typh"]   # duplicate and short title dropped
+    assert news[0]["kind"] == "live" and news[0]["event_date"] == "2026-10-10"
+    assert list(tmp_path.glob("*.json"))                            # saved for audit
+
+
+def test_live_news_rejects_non_json_reply():
+    from agent import live
+    with pytest.raises(RuntimeError, match="did not return JSON"):
+        live.parse_articles("Please limit requests to one every 5 seconds")
+
+
+def test_evaluation_scores_a_known_run():
+    from agent.evaluate import score_run
+    truth = {"news": {
+        "A": {"is_disruption": True, "expected_suppliers": ["S1", "S2"], "acceptable_extra": ["S9"]},
+        "B": {"is_disruption": False, "expected_suppliers": [], "acceptable_extra": []},
+    }, "backups": {"S1": {"backup": "S5", "coverage": "full"}}}
+    records = [
+        {"news_id": "A", "headline": "a", "status": "approved", "scan": {"is_disruption": True},
+         "suppliers": [{"supplier_id": "S1"}, {"supplier_id": "S9"}, {"supplier_id": "S7"}],
+         "advice": {"advice": [{"supplier_id": "S1", "backup_supplier_id": "S5", "coverage": "partial"}]}},
+        {"news_id": "B", "headline": "b", "status": "no_disruption", "scan": {"is_disruption": False}, "suppliers": []},
+        {"news_id": "LIVE-1", "headline": "not in key", "status": "approved", "suppliers": [{"supplier_id": "S1"}]},
+    ]
+    s = score_run(records, truth)
+    assert s["headlines_scored"] == 2                   # live headline ignored
+    assert (s["true_positives"], s["false_positives"], s["false_negatives"]) == (1, 1, 1)  # S9 is an allowed extra
+    assert s["scanner_accuracy"] == 1.0
+    assert s["backup_accuracy"] == 1.0 and s["coverage_accuracy"] == 0.0
+    assert s["exact_headlines"] == 1
+
+
+def test_evaluation_retrieval_metrics():
+    from agent.evaluate import score_retrieval
+    from agent.rag import KeywordRetriever
+    import json as _json
+    from agent import config as _config
+    qs = _json.loads((_config.ROOT / "eval" / "rag_questions.json").read_text())
+    r = score_retrieval(qs, KeywordRetriever())
+    assert r["questions"] == len(qs) and 0 <= r["hit_at_1"] <= r["hit_at_4"] <= 1
+
+
+def test_live_news_falls_back_to_simpler_query(tmp_path, monkeypatch):
+    import json as _json
+    from agent import live
+    monkeypatch.setattr(live, "LIVE_DIR", tmp_path)
+    seen = []
+
+    def get(params):
+        seen.append(params["query"])
+        if "sourcelang" in params["query"]:
+            return "Invalid query"
+        return _json.dumps({"articles": [{"title": "Port strike halts container handling at Antwerp",
+                                          "seendate": "20261010T080000Z"}]})
+
+    news = live.fetch_live_news(limit=3, get=get, sleep=lambda s: None)
+    assert len(seen) == 2 and len(news) == 1

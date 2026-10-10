@@ -11,10 +11,12 @@ from pydantic import BaseModel, Field
 
 class ScanResult(BaseModel):
     is_disruption: bool = Field(description="True only if the event could stop or delay industrial production or freight")
-    event_type: str | None = Field(None, description="One of the known event types, e.g. fire, flood, earthquake, lockdown, conflict, typhoon, severe_weather, route_blocked, port_strike")
+    event_type: str | None = Field(None, description="One of: fire, explosion, flood, earthquake, typhoon, hurricane, severe_weather, lockdown, conflict, export_control, route_blocked, port_strike, port_closure, heatwave, cyberattack")
     places: list[str] = Field(default_factory=list, description="Affected places, named as specifically as the article allows")
     routes: list[str] = Field(default_factory=list, description="Blocked shipping routes, e.g. Suez Canal")
     ports: list[str] = Field(default_factory=list, description="Affected ports")
+    countries: list[str] = Field(default_factory=list, description="Only for country-wide events: export controls, sanctions, war")
+    products: list[str] = Field(default_factory=list, description="Product types the event targets, e.g. rare earth magnets, chips")
     severity: Literal["low", "medium", "high"] | None = None
     reason: str = ""
 

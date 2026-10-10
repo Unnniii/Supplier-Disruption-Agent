@@ -4,6 +4,7 @@
     uv run python -m agent.run                    # Gemini free tier (needs GEMINI_API_KEY)
     SDA_PROVIDER=ollama uv run python -m agent.run   # local model, free, offline
     uv run python -m agent.run --news N01 N07     # only some headlines
+    uv run python -m agent.run --live             # today's real headlines from GDELT (not scored)
 
 Every run appends one line per headline to logs/runs.jsonl (inputs, decisions,
 tokens, cost, time), so any alert can be traced back afterwards.
@@ -45,6 +46,8 @@ def scan(news_items: list[dict], fake: bool, log: bool = True) -> list[dict]:
             "prompt_version": "v1",
             "news_id": item["news_id"],
             "headline": item["headline"],
+            "kind": item.get("kind"),
+            "url": item.get("url"),
             "status": state.get("status"),
             "error": state.get("error"),
             "scan": state.get("scan"),
@@ -98,8 +101,20 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--fake", action="store_true", help="offline rule-based model, no API key, no cost")
     ap.add_argument("--news", nargs="*", help="news ids to run (default: all)")
+    ap.add_argument("--live", action="store_true", help="read the last 24h of real headlines from GDELT instead")
+    ap.add_argument("--max-live", type=int, default=15, help="cap on live headlines per run (protects the free quota)")
     args = ap.parse_args()
-    print_alerts(scan(load_news(args.news), args.fake))
+    if args.live:
+        from agent.live import fetch_live_news
+        news = fetch_live_news(limit=args.max_live)
+        print(f"Fetched {len(news)} live headlines (saved to data/live/)")
+    else:
+        news = load_news(args.news)
+    results = scan(news, args.fake)
+    print_alerts(results)
+    if args.live:
+        hits = [r for r in results if r["status"] not in ("no_disruption", "no_exposure")]
+        print(f"Live summary: {len(hits)} of {len(results)} headlines touch our suppliers.")
 
 
 if __name__ == "__main__":

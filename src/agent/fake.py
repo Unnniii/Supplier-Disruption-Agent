@@ -17,9 +17,12 @@ from agent.llm import LLMResponse, ToolCall
 _INPUT = re.compile(r"<input>\n(.*)\n</input>", re.DOTALL)
 
 NOT_DISRUPTION = ["no closures", "operating normally", "accept", "no strike", "record profit", "record crowds",
-                  "win", "festival", "unveil", "interest rate", "holds interest"]
+                  "win", "festival", "unveil", "interest rate", "holds interest", "record month", "expo"]
 EVENT_WORDS = [  # first match wins, so specific before general
-    ("aground", "route_blocked"), ("blocks the suez", "route_blocked"), ("strike", "port_strike"),
+    ("aground", "route_blocked"), ("blocks the suez", "route_blocked"), ("red sea", "route_blocked"),
+    ("canal transits", "route_blocked"), ("bridge collapse", "port_closure"),
+    ("export licence", "export_control"), ("bars export", "export_control"), ("strike", "port_strike"),
+    ("hurricane", "hurricane"),
     ("earthquake", "earthquake"), ("tsunami", "earthquake"), ("typhoon", "typhoon"), ("lockdown", "lockdown"),
     ("war ", "conflict"), ("invasion", "conflict"), ("winter storm", "severe_weather"), ("power cuts", "severe_weather"),
     ("flood", "flood"), ("fire", "fire"), ("blaze", "fire"), ("cyberattack", "cyberattack"), ("heatwave", "heatwave"),
@@ -71,9 +74,13 @@ class FakeLLM:
         from agent.erp import GAZETTEER_PATH
         gaz = json.loads(GAZETTEER_PATH.read_text())
         places = [pl for pl in sorted(gaz["places"], key=len, reverse=True) if pl.lower() in text]
-        routes = [r for r in gaz["routes"] if r.split()[0].lower() in text and r == "Suez Canal"]
-        ports = [pt for pt in gaz["ports"] if pt.lower() in text and event in ("port_strike", "lockdown")]
-        if routes:
+        lanes = [r for r in gaz["routes"] if " " in r and r.lower() in text and r not in ("Cape of Good Hope",)]
+        lanes += [a for a in gaz.get("route_aliases", {}) if a.lower() in text]
+        routes = lanes if event == "route_blocked" else []
+        if "suez" in text and event == "route_blocked" and "Suez Canal" not in routes:
+            routes.append("Suez Canal")
+        ports = [pt for pt in gaz["ports"] if pt.lower() in text and event in ("port_strike", "lockdown", "port_closure")]
+        if routes or event in ("port_strike", "port_closure"):
             places = []
         return {"is_disruption": True, "event_type": event, "places": places, "routes": routes,
                 "ports": ports, "severity": "high", "reason": "keyword match"}

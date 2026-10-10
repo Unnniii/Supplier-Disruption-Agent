@@ -39,7 +39,7 @@ def test_cap_hit_mid_batch_marks_remaining_headlines_error(monkeypatch):
     errors = [r for r in results if r["status"] == "error"]
     assert errors, "cap should have stopped the run"
     assert all("call cap" in r["error"] for r in errors)
-    assert len(results) == 20  # the batch still finishes and logs every headline
+    assert len(results) == len(load_news(None))  # the batch still finishes and logs every headline
 
 
 # --- Gemini ---------------------------------------------------------------------

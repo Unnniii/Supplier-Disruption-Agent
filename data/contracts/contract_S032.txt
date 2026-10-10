@@ -1,0 +1,9 @@
+SUPPLY AGREEMENT NG-2024-077
+Supplier: Baotou Rare Earth Magnetics (S032), Baotou, Inner Mongolia, China.
+Products: NdFeB traction motor magnets and sensor magnet sets for NX-EV.
+
+Clause 4 Export licences. The Supplier is responsible for obtaining any export licence. Delays caused by licensing are treated as force majeure.
+
+Clause 5 Second source. Ganzhou Magnet Works (S033) is approved as a full second source for all magnet part numbers. Note: both sources are in China and subject to the same national export rules.
+
+Clause 6 Buffer. Northgate holds 6 weeks of magnet stock at Merseyside Assembly.

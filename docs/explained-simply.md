@@ -8,7 +8,7 @@ This project is a team of robot helpers that read the news every morning and sho
 
 ## The story, like you are 5
 
-1. **The newspaper arrives.** We have 20 news stories. Some are scary (a fire at a chip factory). Some are boring (a football match).
+1. **The newspaper arrives.** Either 34 old stories we already know the answers to (a fire at a chip factory, the Red Sea attacks, a football match), or today's real headlines from the internet.
 2. **Robot 1, the Scanner, reads each story.** It asks: "Is this something that could stop a factory or a ship?" If no, it stops there.
 3. **Robot 2, the Mapper, looks at the map.** It asks: "Which of our shops are close to the trouble, or use that canal or port?"
 4. **Robot 3, the Impact checker, opens the cupboard.** It asks: "How many days of parts do we have left from that shop?"
@@ -27,7 +27,7 @@ This project is a team of robot helpers that read the news every morning and sho
 ## Two golden rules of this project
 
 - **Robots do the thinking, the calculator does the maths.** Distances and days of stock are worked out by plain code, never guessed by AI.
-- **Every answer is checked against an answer key.** We wrote down the right answers before the robots ran, so we can score them.
+- **Every answer is checked against an answer key.** We wrote down the right answers before the robots ran, so we can score them. Today's live news has no answer key, so it is used, not scored.
 
 ---
 
@@ -49,22 +49,26 @@ This project is a team of robot helpers that read the news every morning and sho
 | File | What it is |
 |---|---|
 | `data/erp.db` | The pretend company's database: shops, parts, stock, orders. Made by `seed_erp.py`. |
-| `data/news.json` | The 20 news stories. 9 are real past disasters, 11 are noise or tricks. |
-| `data/contracts/contract_SXXX.txt` | 15 pretend agreements with shops. They name backup shops, stock and rules. |
-| `data/gazetteer.json` | A tiny map book: place name to map position (e.g. "Lviv" to its coordinates). |
+| `data/news.json` | The 34 old news stories. 21 are real past disasters (2011 to 2025), 13 are noise or tricks. |
+| `data/contracts/contract_SXXX.txt` | 23 pretend agreements with shops. They name backup shops, stock and rules. |
+| `data/gazetteer.json` | A tiny map book: place name to map position, shipping lanes, and "the Red Sea is the Suez lane". |
+| `data/live/` | Today's real headlines, saved each time live mode runs, so you can see what the robots read. |
 | `data/chroma/` | The search index for contracts. Built automatically on the first run. |
 
 ### `scripts/`
 
 | File | What it is |
 |---|---|
-| `scripts/seed_erp.py` | Builds `erp.db` from scratch. Same result every time, so tests are fair. |
+| `scripts/seed_erp.py` | Builds `erp.db` from scratch: 41 shops, 98 parts. Same result every time, so tests are fair. |
+| `scripts/run_daily.ps1` | Runs live mode every morning on Windows (with Task Scheduler) and writes to `logs/daily.log`. |
 
 ### `src/agent/`: the brain
 
 | File | What it is |
 |---|---|
-| `run.py` | The start button. Reads the news, runs the robots, prints alerts, saves a log. |
+| `run.py` | The start button. Reads the news (old or live), runs the robots, prints alerts, saves a log. |
+| `live.py` | Fetches today's headlines from GDELT, a free news index. One request, max 15 headlines. |
+| `evaluate.py` | The marker. Compares a run with the answer key and writes the score card. |
 | `graph.py` | The boss (orchestration). Decides which robot goes next and when to stop early. |
 | `agents.py` | The four robots' instructions, plus the Verifier and the maths double-check. |
 | `tools.py` | The tools each robot is allowed to use. Each robot only gets its own tools. |
@@ -81,14 +85,16 @@ This project is a team of robot helpers that read the news every morning and sho
 | File | What it is |
 |---|---|
 | `eval/ground_truth.json` | The right answers, written by hand: which shops each story should flag, and the traps. |
-| `eval/rag_questions.json` | 10 questions about contracts, with the clause that should be found. Tests the RAG. |
+| `eval/rag_questions.json` | 14 questions about contracts, with the contract that should be found. Tests the RAG. |
+| `eval/results.md` | The latest score card, written by `evaluate.py`. |
+| `eval/history.jsonl` | Every score card ever, one line each, so you can show "before and after". |
 
 ### `tests/`: the safety checks
 
 | File | What it is |
 |---|---|
-| `tests/test_data_and_map.py` | Checks the pretend data makes sense and the map step finds the right shops. |
-| `tests/test_agents_graph.py` | Checks the boss sends robots in the right order and handles mistakes. |
+| `tests/test_data_and_map.py` | Checks the pretend data makes sense, the map step finds the right shops for every story, and new shops did not change old ones. |
+| `tests/test_agents_graph.py` | Checks the boss sends robots in the right order, handles mistakes, reads live news safely and scores correctly. |
 | `tests/test_llm_adapters.py` | Checks the phone lines to Gemini and Ollama, the cap, and the fixes from the first real run. |
 | `tests/conftest.py` | Setup for tests: build the database if missing, never use the internet. |
 | `tests/__init__.py` | Empty file so tests can share helpers. |
@@ -124,4 +130,4 @@ run.py
 
 ## Say it in an interview (30 seconds)
 
-"I built a multi-agent system that reads supply chain news, finds which suppliers are hit, checks days of stock in an ERP, and pulls the backup plan from supplier contracts using RAG. LangGraph orchestrates four agents, each with only its own tools. The maths is plain code, not AI, and a verifier rejects any claim the contracts do not support. I score it against a hand-written answer key built from real disruptions like the Suez blockage, and it runs for £0 on Gemini's free tier with a hard cap on calls."
+"I built a multi-agent system that reads supply chain news, finds which suppliers are hit, checks days of stock in an ERP, and pulls the backup plan from supplier contracts using RAG. LangGraph orchestrates four agents, each with only its own tools. The maths is plain code, not AI, and a verifier rejects any claim the contracts do not support. I score it against a hand-written answer key built from 21 real disruptions, from the Suez blockage to China's rare earth export licences, and it also runs daily on live news. It runs for £0 on Gemini's free tier with a hard cap on calls."

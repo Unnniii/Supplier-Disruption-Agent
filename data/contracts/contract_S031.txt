@@ -1,0 +1,9 @@
+SUPPLY AGREEMENT NG-2025-012
+Buyer: Northgate Motors Ltd. Supplier: Dongguan Discrete Devices Co (S031), Dongguan, China, a packaging and test subcontractor for discrete semiconductors.
+Products: power MOSFETs and logic ICs for body control and lighting modules.
+
+Clause 6 Force majeure includes government orders and export restrictions. Notice within 3 days.
+
+Clause 7 Second source. Hsinchu Silicon Ltd (S038) is qualified as a second source for power MOSFETs only. Logic ICs have no qualified alternate; qualification would take 12 weeks.
+
+Clause 8 Buffer. The Supplier holds 4 weeks of finished goods in a bonded warehouse in Rotterdam.

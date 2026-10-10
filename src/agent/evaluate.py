@@ -1,0 +1,211 @@
+"""Score a run against the hand-written answer key.
+
+    uv run python -m agent.evaluate              # score the latest run in logs/runs.jsonl
+    uv run python -m agent.evaluate --run-id ab12cd34
+    uv run python -m agent.evaluate --no-rag     # skip the retrieval check (saves embedding calls)
+
+What is scored, and how:
+  Scanner     is_disruption matches the key                       -> accuracy
+  Mapper      flagged suppliers vs expected                       -> precision, recall, F1
+              (acceptable_extra are neither rewarded nor punished)
+  Advisor     backup supplier and coverage vs the contracts       -> accuracy
+  Retrieval   right contract in the top 1 / top 4 for 14 questions -> hit@1, hit@4, MRR
+  Pipeline    verifier outcomes, rule corrections, repairs, errors, tokens, cost, time
+
+Writes eval/results.md (latest, human-readable) and appends one line to
+eval/history.jsonl so before/after comparisons are a diff, not a memory.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from collections import Counter
+from datetime import datetime, timezone
+from typing import Any
+
+from agent import config
+
+TRUTH_PATH = config.ROOT / "eval" / "ground_truth.json"
+RAG_PATH = config.ROOT / "eval" / "rag_questions.json"
+RESULTS_MD = config.ROOT / "eval" / "results.md"
+HISTORY = config.ROOT / "eval" / "history.jsonl"
+
+
+def load_run(run_id: str | None = None) -> list[dict]:
+    if not config.LOG_PATH.exists():
+        raise SystemExit("No runs yet: run `uv run python -m agent.run` first.")
+    rows = [json.loads(line) for line in config.LOG_PATH.read_text().splitlines() if line.strip()]
+    run_id = run_id or rows[-1]["run_id"]
+    picked = [r for r in rows if r["run_id"] == run_id]
+    if not picked:
+        raise SystemExit(f"run_id {run_id} not found in {config.LOG_PATH}")
+    # If a headline appears twice in one run, keep the last attempt.
+    return list({r["news_id"]: r for r in picked}.values())
+
+
+def _ratio(a: int, b: int) -> float | None:
+    return round(a / b, 3) if b else None
+
+
+def score_run(records: list[dict], truth: dict) -> dict[str, Any]:
+    tp = fp = fn = 0
+    scan_ok = scan_n = exact = 0
+    backup_ok = coverage_ok = backup_n = 0
+    statuses: Counter = Counter()
+    per_headline, misses = [], []
+    scored = [r for r in records if r["news_id"] in truth["news"]]
+
+    for r in scored:
+        case = truth["news"][r["news_id"]]
+        statuses[r["status"]] += 1
+        expected = set(case["expected_suppliers"])
+        allowed = expected | set(case["acceptable_extra"])
+        flagged = {s["supplier_id"] for s in (r.get("suppliers") or [])}
+        h_tp, h_fn, h_fp = flagged & expected, expected - flagged, flagged - allowed
+        tp, fn, fp = tp + len(h_tp), fn + len(h_fn), fp + len(h_fp)
+
+        if r.get("scan") is not None and case["is_disruption"] is not None:  # None = either answer accepted
+            scan_n += 1
+            scan_ok += r["scan"]["is_disruption"] == case["is_disruption"]
+        ok = not h_fn and not h_fp and r["status"] != "error"
+        exact += ok
+
+        for a in (r.get("advice") or {}).get("advice", []):
+            key = truth["backups"].get(a["supplier_id"])
+            if key and a["supplier_id"] in flagged:
+                backup_n += 1
+                backup_ok += a.get("backup_supplier_id") == key["backup"]
+                coverage_ok += a.get("coverage") == key["coverage"]
+                if a.get("backup_supplier_id") != key["backup"] or a.get("coverage") != key["coverage"]:
+                    misses.append(f"{r['news_id']} {a['supplier_id']}: backup {a.get('backup_supplier_id')} "
+                                  f"({a.get('coverage')}), key says {key['backup']} ({key['coverage']})")
+
+        per_headline.append({"news_id": r["news_id"], "status": r["status"], "ok": ok,
+                             "missed": sorted(h_fn), "false_alarms": sorted(h_fp)})
+        if h_fn or h_fp or r["status"] == "error":
+            note = []
+            if h_fn:
+                note.append(f"missed {', '.join(sorted(h_fn))}")
+            if h_fp:
+                note.append(f"false alarm {', '.join(sorted(h_fp))}")
+            if r["status"] == "error":
+                note.append(f"error: {(r.get('error') or '')[:90]}")
+            misses.insert(0, f"{r['news_id']} {r['headline'][:60]}: {'; '.join(note)}")
+
+    precision, recall = _ratio(tp, tp + fp), _ratio(tp, tp + fn)
+    f1 = round(2 * precision * recall / (precision + recall), 3) if precision and recall else None
+    usage = [u for r in scored for u in r.get("usage", [])]
+    tokens = sum(r.get("input_tokens", 0) + r.get("output_tokens", 0) for r in scored)
+    return {
+        "headlines_scored": len(scored),
+        "headlines_in_key": len(truth["news"]),
+        "exact_headlines": exact,
+        "scanner_accuracy": _ratio(scan_ok, scan_n),
+        "supplier_precision": precision, "supplier_recall": recall, "supplier_f1": f1,
+        "true_positives": tp, "false_positives": fp, "false_negatives": fn,
+        "backup_accuracy": _ratio(backup_ok, backup_n), "coverage_accuracy": _ratio(coverage_ok, backup_n),
+        "backup_checks": backup_n,
+        "statuses": dict(statuses),
+        "verifier_revisions": sum(r.get("revisions", 0) for r in scored),
+        "impact_rule_corrections": sum(len(r.get("impact_disagreements", [])) for r in scored),
+        "json_repairs": sum(u.get("repairs", 0) for u in usage),
+        "tokens": tokens,
+        "tokens_per_headline": round(tokens / len(scored)) if scored else None,
+        "cost_usd": round(sum(r.get("cost_usd", 0) for r in scored), 4),
+        "seconds_per_headline": round(sum(r.get("seconds", 0) for r in scored) / len(scored), 1) if scored else None,
+        "per_headline": per_headline,
+        "misses": misses,
+    }
+
+
+def score_retrieval(questions: list[dict], retriever=None) -> dict[str, Any]:
+    from agent.rag import get_retriever
+    retriever = retriever or get_retriever()
+    hit1 = hit4 = 0
+    rr, misses = 0.0, []
+    for q in questions:
+        hits = retriever.search(q["question"], k=4)
+        contracts = [h["chunk_id"].split("#")[0] for h in hits]
+        if contracts[:1] == [q["expected_contract"]]:
+            hit1 += 1
+        if q["expected_contract"] in contracts:
+            hit4 += 1
+            rr += 1 / (contracts.index(q["expected_contract"]) + 1)
+        else:
+            misses.append(f"{q['qid']} '{q['question'][:55]}': wanted {q['expected_contract']}, got {contracts[:2]}")
+    n = len(questions)
+    return {"retriever": retriever.name, "questions": n, "hit_at_1": _ratio(hit1, n), "hit_at_4": _ratio(hit4, n),
+            "mrr": round(rr / n, 3) if n else None, "misses": misses}
+
+
+def _pct(x: float | None) -> str:
+    return "n/a" if x is None else f"{x * 100:.0f}%"
+
+
+def render(run: dict, rag: dict | None, meta: dict) -> str:
+    lines = [
+        f"# Evaluation: run `{meta['run_id']}`",
+        "",
+        f"Model `{meta['model']}` · prompt `{meta['prompt_version']}` · scored {meta['scored_at']} · "
+        f"{run['headlines_scored']} of {run['headlines_in_key']} headlines in the answer key",
+        "",
+        "| What | Score |",
+        "|---|---|",
+        f"| Headlines fully right (no miss, no false alarm, no error) | {run['exact_headlines']} / {run['headlines_scored']} |",
+        f"| Scanner: disruption or not | {_pct(run['scanner_accuracy'])} |",
+        f"| Suppliers flagged: precision | {_pct(run['supplier_precision'])} ({run['false_positives']} false alarms) |",
+        f"| Suppliers flagged: recall | {_pct(run['supplier_recall'])} ({run['false_negatives']} missed) |",
+        f"| Backup supplier named correctly | {_pct(run['backup_accuracy'])} of {run['backup_checks']} |",
+        f"| Backup coverage (full / partial / none) correct | {_pct(run['coverage_accuracy'])} of {run['backup_checks']} |",
+    ]
+    if rag:
+        lines += [f"| Contract search: right contract first ({rag['retriever']}) | {_pct(rag['hit_at_1'])} of {rag['questions']} |",
+                  f"| Contract search: right contract in top 4 | {_pct(rag['hit_at_4'])} (MRR {rag['mrr']}) |"]
+    s = run["statuses"]
+    lines += [
+        f"| Outcomes | {', '.join(f'{k} {v}' for k, v in sorted(s.items()))} |",
+        f"| Verifier sent advice back | {run['verifier_revisions']} times |",
+        f"| Impact ratings corrected by the rule | {run['impact_rule_corrections']} |",
+        f"| Invalid JSON repaired | {run['json_repairs']} |",
+        f"| Tokens | {run['tokens']:,} ({run['tokens_per_headline']:,} per headline) |",
+        f"| Cost | ${run['cost_usd']:.4f} |",
+        f"| Time | {run['seconds_per_headline']} s per headline |",
+        "",
+        "## What went wrong",
+        "",
+    ]
+    misses = run["misses"] + (rag["misses"] if rag else [])
+    lines += [f"- {m}" for m in misses] or ["- Nothing: every scored check passed."]
+    lines += ["", "Acceptable extras (defensible but not required) are not counted as false alarms. "
+              "The answer key and its reasoning are in `eval/ground_truth.json`.", ""]
+    return "\n".join(lines)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--run-id")
+    ap.add_argument("--no-rag", action="store_true", help="skip the contract retrieval check")
+    args = ap.parse_args()
+
+    truth = json.loads(TRUTH_PATH.read_text())
+    records = load_run(args.run_id)
+    run = score_run(records, truth)
+    rag = None if args.no_rag else score_retrieval(json.loads(RAG_PATH.read_text()))
+    meta = {"run_id": records[0]["run_id"], "model": records[0].get("model"),
+            "prompt_version": records[0].get("prompt_version"),
+            "scored_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+
+    report = render(run, rag, meta)
+    RESULTS_MD.write_text(report)
+    summary = {**meta, **{k: v for k, v in run.items() if k not in ("per_headline", "misses")}}
+    if rag:
+        summary.update({f"rag_{k}": v for k, v in rag.items() if k != "misses"})
+    with HISTORY.open("a") as f:
+        f.write(json.dumps(summary) + "\n")
+    print(report)
+    print(f"Saved {RESULTS_MD.relative_to(config.ROOT)} and appended to {HISTORY.relative_to(config.ROOT)}")
+
+
+if __name__ == "__main__":
+    main()

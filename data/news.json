@@ -138,5 +138,103 @@
     "kind": "synthetic",
     "headline": "Cyberattack takes down booking system at Dublin software firm",
     "body": "A Dublin-based software company said a ransomware attack had disrupted its online booking platform for hotel customers."
+  },
+  {
+    "news_id": "N21",
+    "event_date": "2025-10-04",
+    "kind": "historical_replay",
+    "headline": "China bars exports of chips made by Nexperia's Chinese operations; Dongguan packaging site frozen",
+    "body": "Beijing has barred Nexperia China and its subcontractors from exporting finished chips made in China. The Dongguan packaging and test site handles a large share of the group's basic power and logic chips used in car electronics. European carmakers warn that stocks of these chips are thin."
+  },
+  {
+    "news_id": "N22",
+    "event_date": "2025-04-04",
+    "kind": "historical_replay",
+    "headline": "China requires export licences for rare earth magnets; car suppliers warn of line stoppages",
+    "body": "China now requires a licence for every export of rare earth materials, including neodymium and dysprosium magnets used in electric motors. Only a fraction of licence applications have been approved, and European parts makers report production lines shutting as magnet stocks run down."
+  },
+  {
+    "news_id": "N23",
+    "event_date": "2025-09",
+    "kind": "historical_replay",
+    "headline": "Fire shuts aluminium rolling mill in Oswego, New York that supplies automotive body sheet",
+    "body": "A fire in the hot mill of an aluminium plant in Oswego has halted production of sheet used for pickup truck and SUV bodies. The operator expects the plant to be out of action for months."
+  },
+  {
+    "news_id": "N24",
+    "event_date": "2024-09-27",
+    "kind": "historical_replay",
+    "headline": "Hurricane Helene floods Spruce Pine, home of the world's main high-purity quartz mines",
+    "body": "Catastrophic flooding from Hurricane Helene has cut power and roads around Spruce Pine in western North Carolina. Mines there supply most of the world's high-purity quartz used to make crucibles for growing silicon wafers, and operations have stopped."
+  },
+  {
+    "news_id": "N25",
+    "event_date": "2024-10-29",
+    "kind": "historical_replay",
+    "headline": "Flash floods devastate industrial estates south of Valencia; car plant and suppliers halt",
+    "body": "A year's rain fell in eight hours around Valencia. Industrial estates in Paiporta and nearby towns are under water, supplier plants and warehouses are damaged, sections of the A-7 motorway are closed, and the car plant at Almussafes has stopped production."
+  },
+  {
+    "news_id": "N26",
+    "event_date": "2024-09-07",
+    "kind": "historical_replay",
+    "headline": "Typhoon Yagi tears roofs off factories in Haiphong industrial parks",
+    "body": "The strongest typhoon to hit northern Vietnam in decades has damaged hundreds of factories in Haiphong and Quang Ninh. Power is out across industrial parks and many plants have suspended work."
+  },
+  {
+    "news_id": "N27",
+    "event_date": "2024-04-03",
+    "kind": "historical_replay",
+    "headline": "Magnitude 7.4 earthquake near Hualien, Taiwan; chip fabs evacuated",
+    "body": "The strongest earthquake in Taiwan for 25 years struck off Hualien. Semiconductor makers evacuated fabs in Hsinchu and Taichung and are inspecting equipment before restarting production."
+  },
+  {
+    "news_id": "N28",
+    "event_date": "2024-03-26",
+    "kind": "historical_replay",
+    "headline": "Francis Scott Key Bridge collapse closes the Port of Baltimore to shipping",
+    "body": "A container ship struck the Key Bridge, which collapsed into the Patapsco River. The Port of Baltimore, the busiest US port for vehicles and a major gateway for parts, is closed to ships until the channel is cleared."
+  },
+  {
+    "news_id": "N29",
+    "event_date": "2023-11",
+    "kind": "historical_replay",
+    "headline": "Drought forces deeper cuts to Panama Canal transits",
+    "body": "With Gatun Lake at record lows, the Panama Canal Authority has cut daily transit slots again. Shippers face long queues or costly diversions for cargo between the west coast of the Americas and Europe."
+  },
+  {
+    "news_id": "N30",
+    "event_date": "2024-01-11",
+    "kind": "historical_replay",
+    "headline": "Red Sea attacks force ships around Africa; car plants in Europe pause for missing parts",
+    "body": "Attacks on merchant ships near Bab el-Mandeb have pushed most container lines to avoid the Red Sea and sail around the Cape of Good Hope, adding up to two weeks. Car plants in Germany and Belgium have paused production because parts from Asia are delayed."
+  },
+  {
+    "news_id": "N31",
+    "event_date": "2024-10-01",
+    "kind": "historical_replay",
+    "headline": "Dockworkers strike at US East and Gulf Coast ports",
+    "body": "Tens of thousands of dockworkers walked out at ports from Maine to Texas, including New York, Baltimore, Charleston and Houston. Container handling has stopped and exporters face growing backlogs."
+  },
+  {
+    "news_id": "N32",
+    "event_date": "2025-03-28",
+    "kind": "historical_replay",
+    "headline": "Magnitude 7.7 earthquake strikes central Myanmar near Mandalay; tremors felt in Bangkok",
+    "body": "A powerful earthquake near Sagaing and Mandalay has caused widespread destruction in central Myanmar. In Bangkok, more than 1,000 km away, a building under construction collapsed and offices were evacuated; most factories in Thailand reported only brief stoppages for checks."
+  },
+  {
+    "news_id": "N33",
+    "event_date": "2026-09-15",
+    "kind": "synthetic",
+    "headline": "Port of Baltimore posts record month for vehicle imports",
+    "body": "The Port of Baltimore handled more cars and light trucks in August than in any month on record, the state port authority said."
+  },
+  {
+    "news_id": "N34",
+    "event_date": "2026-09-20",
+    "kind": "synthetic",
+    "headline": "Hsinchu science park hosts annual semiconductor expo",
+    "body": "Chipmakers and equipment suppliers showed new products at the annual expo in Hsinchu Science Park, which drew record attendance."
   }
 ]

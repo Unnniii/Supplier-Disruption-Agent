@@ -75,6 +75,18 @@ IDEAL_SCANS = {
     "N07": ("route", "Suez Canal", None),
     "N08": ("port", "Felixstowe", None),
     "N09": ("place", "Pohang", "typhoon"),
+    "N21": ("place", "Dongguan", "export_control"),
+    "N22": ("country", "China", "Rare earth magnets"),
+    "N23": ("place", "Oswego", "fire"),
+    "N24": ("place", "Spruce Pine", "hurricane"),
+    "N25": ("place", "Paiporta", "flood"),
+    "N26": ("place", "Haiphong", "typhoon"),
+    "N27": ("place", "Hualien", "earthquake"),
+    "N28": ("ports", ["Baltimore"], None),
+    "N29": ("route", "Panama Canal", None),
+    "N30": ("route", "Red Sea", None),
+    "N31": ("ports", ["New York", "Baltimore", "Charleston", "Houston"], None),
+    "N32": ("place", "Mandalay", "earthquake"),
 }
 
 
@@ -85,6 +97,10 @@ def test_map_step_hits_answer_key(news_id):
         found = _ids(erp.suppliers_near(value, event_type))
     elif kind == "route":
         found = _ids(erp.suppliers_on_route(value))
+    elif kind == "country":
+        found = _ids(erp.suppliers_in_country(value, event_type))
+    elif kind == "ports":
+        found = sorted({sid for port in value for sid in _ids(erp.suppliers_using_port(port))})
     else:
         found = _ids(erp.suppliers_using_port(value))
     case = TRUTH["news"][news_id]
@@ -106,3 +122,25 @@ def test_unknown_place_returns_nothing():
 def test_days_of_cover_is_computed():
     rows = erp.parts_at_risk("S001")
     assert rows and all(r["days_of_cover"] > 0 for r in rows)
+
+
+def test_original_30_suppliers_unchanged_by_expansion():
+    """Adding suppliers must not change earlier data, or old results stop being comparable."""
+    con = sqlite3.connect(erp.DB_PATH)
+    row = con.execute("SELECT on_hand_units, daily_usage_units FROM inventory WHERE part_id='P001' ORDER BY plant_id").fetchall()
+    assert erp.parts_at_risk("S001")[0]["days_of_cover"] == 6.0  # matches the 2026-10-09 Gemini run
+    assert row  # P001 still exists
+
+
+def test_red_sea_is_the_suez_lane():
+    assert _ids(erp.suppliers_on_route("Red Sea")) == _ids(erp.suppliers_on_route("Suez Canal"))
+
+
+def test_country_tool_filters_by_category():
+    assert _ids(erp.suppliers_in_country("China", "Rare earth magnets")) == ["S032", "S033"]
+    assert len(erp.suppliers_in_country("China")) > 2
+
+
+def test_baltimore_needs_the_port_tool_not_a_radius():
+    assert erp.suppliers_near("Baltimore", "port_closure") == []
+    assert _ids(erp.suppliers_using_port("Baltimore")) == ["S039"]

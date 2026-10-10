@@ -1,32 +1,230 @@
 {
-  "_note": "Stand-in geocoder for v1: place name -> coordinates. Replace with a geocoding API in v2.",
+  "_note": "Stand-in geocoder for v1: place name -> coordinates; shipping routes, route aliases and ports. Replace with a geocoding API in v2.",
   "places": {
-    "Hitachinaka": [36.3966, 140.5345],
-    "Ibaraki": [36.3418, 140.4468],
-    "Ayutthaya": [14.3532, 100.5689],
-    "Bangkok": [13.7563, 100.5018],
-    "Houston": [29.7604, -95.3698],
-    "Freeport, Texas": [28.9541, -95.3597],
-    "Texas Gulf Coast": [29.3013, -94.7977],
-    "Ukraine": [50.4501, 30.5234],
-    "Kyiv": [50.4501, 30.5234],
-    "Lviv": [49.8397, 24.0297],
-    "Fukushima coast": [37.4211, 141.0328],
-    "Iwaki": [37.0505, 140.8877],
-    "Sendai": [38.2682, 140.8694],
-    "Shanghai": [31.2304, 121.4737],
-    "Pohang": [36.0190, 129.3435],
-    "Stuttgart": [48.7758, 9.1829],
-    "Taichung": [24.1477, 120.6736],
-    "Marseille": [43.2965, 5.3698],
-    "Jakarta": [-6.2088, 106.8456],
-    "Coventry": [52.4068, -1.5197],
-    "Munich": [48.1351, 11.5820],
-    "Nakagawa": [36.7369, 140.1695],
-    "Antwerp": [51.2194, 4.4025],
-    "Valencia": [39.4699, -0.3763],
-    "Dublin": [53.3498, -6.2603]
+    "Hitachinaka": [
+      36.3966,
+      140.5345
+    ],
+    "Ibaraki": [
+      36.3418,
+      140.4468
+    ],
+    "Ayutthaya": [
+      14.3532,
+      100.5689
+    ],
+    "Bangkok": [
+      13.7563,
+      100.5018
+    ],
+    "Houston": [
+      29.7604,
+      -95.3698
+    ],
+    "Freeport, Texas": [
+      28.9541,
+      -95.3597
+    ],
+    "Texas Gulf Coast": [
+      29.3013,
+      -94.7977
+    ],
+    "Ukraine": [
+      50.4501,
+      30.5234
+    ],
+    "Kyiv": [
+      50.4501,
+      30.5234
+    ],
+    "Lviv": [
+      49.8397,
+      24.0297
+    ],
+    "Fukushima coast": [
+      37.4211,
+      141.0328
+    ],
+    "Iwaki": [
+      37.0505,
+      140.8877
+    ],
+    "Sendai": [
+      38.2682,
+      140.8694
+    ],
+    "Shanghai": [
+      31.2304,
+      121.4737
+    ],
+    "Pohang": [
+      36.019,
+      129.3435
+    ],
+    "Stuttgart": [
+      48.7758,
+      9.1829
+    ],
+    "Taichung": [
+      24.1477,
+      120.6736
+    ],
+    "Marseille": [
+      43.2965,
+      5.3698
+    ],
+    "Jakarta": [
+      -6.2088,
+      106.8456
+    ],
+    "Coventry": [
+      52.4068,
+      -1.5197
+    ],
+    "Munich": [
+      48.1351,
+      11.582
+    ],
+    "Nakagawa": [
+      36.7369,
+      140.1695
+    ],
+    "Antwerp": [
+      51.2194,
+      4.4025
+    ],
+    "Valencia": [
+      39.4699,
+      -0.3763
+    ],
+    "Dublin": [
+      53.3498,
+      -6.2603
+    ],
+    "Dongguan": [
+      23.0207,
+      113.7518
+    ],
+    "Shenzhen": [
+      22.5431,
+      114.0579
+    ],
+    "Baotou": [
+      40.6574,
+      109.8403
+    ],
+    "Ganzhou": [
+      25.8292,
+      114.9336
+    ],
+    "Oswego": [
+      43.4553,
+      -76.5105
+    ],
+    "Oswego, New York": [
+      43.4553,
+      -76.5105
+    ],
+    "Spruce Pine": [
+      35.9154,
+      -82.0646
+    ],
+    "Western North Carolina": [
+      35.5951,
+      -82.5515
+    ],
+    "Almussafes": [
+      39.2936,
+      -0.4146
+    ],
+    "Paiporta": [
+      39.4281,
+      -0.4176
+    ],
+    "Haiphong": [
+      20.8449,
+      106.6881
+    ],
+    "Hanoi": [
+      21.0278,
+      105.8342
+    ],
+    "Hualien": [
+      23.9871,
+      121.6015
+    ],
+    "Hsinchu": [
+      24.8138,
+      120.9675
+    ],
+    "Taipei": [
+      25.033,
+      121.5654
+    ],
+    "Baltimore": [
+      39.2904,
+      -76.6122
+    ],
+    "Mandalay": [
+      21.9588,
+      96.0891
+    ],
+    "Sagaing": [
+      21.8787,
+      95.979
+    ],
+    "Kumamoto": [
+      32.8032,
+      130.7079
+    ]
   },
-  "routes": ["Suez Canal", "Cape of Good Hope", "Atlantic", "Mediterranean", "Road via Poland", "Road via Channel", "Domestic road"],
-  "ports": ["Felixstowe", "Southampton", "Liverpool", "Dover", "Shanghai", "Ningbo", "Busan", "Tokyo", "Yokohama", "Kaohsiung", "Penang", "Chennai", "Nhava Sheva", "Laem Chabang", "Houston", "Veracruz", "New York", "Valencia", "Leixoes", "Izmir", "Casablanca", "Antwerp"]
+  "routes": [
+    "Atlantic",
+    "Cape of Good Hope",
+    "Domestic road",
+    "Mediterranean",
+    "Panama Canal",
+    "Road via Channel",
+    "Road via Poland",
+    "Suez Canal"
+  ],
+  "ports": [
+    "Antwerp",
+    "Baltimore",
+    "Busan",
+    "Casablanca",
+    "Charleston",
+    "Chennai",
+    "Dover",
+    "Felixstowe",
+    "Haiphong",
+    "Houston",
+    "Izmir",
+    "Kaohsiung",
+    "Laem Chabang",
+    "Leixoes",
+    "Liverpool",
+    "Manzanillo",
+    "New York",
+    "Nhava Sheva",
+    "Ningbo",
+    "Norfolk",
+    "Penang",
+    "San Antonio",
+    "Savannah",
+    "Shanghai",
+    "Southampton",
+    "Tianjin",
+    "Tokyo",
+    "Valencia",
+    "Veracruz",
+    "Xiamen",
+    "Yantian",
+    "Yokohama"
+  ],
+  "route_aliases": {
+    "Red Sea": "Suez Canal",
+    "Bab el-Mandeb": "Suez Canal",
+    "Gulf of Aden": "Suez Canal"
+  }
 }

@@ -2,6 +2,15 @@
 
 Every bug, wrong assumption and process failure, with what caught it. Newest first.
 
+## 2026-10-10: data expansion and evaluation
+
+| What changed or went wrong | What caught it | Fix |
+|---|---|---|
+| Adding suppliers on the Suez route would silently change the right answer for the 2021 Suez replay (N07) and the Felixstowe strike (N08). | Writing the new answer key. | Stated in the key that route and port events replay against today's supplier base, and recomputed N07 and N08. |
+| Adding suppliers could have reshuffled the random stock numbers for S001 to S030, making old runs incomparable. | Design check before seeding. | New suppliers use their own random stream; a test asserts the original rows are byte-identical. |
+| "Flash floods disrupt traffic in Jakarta" was keyed as not a disruption, but a city flood can delay freight. A reasonable Scanner would have been marked wrong. | Reviewing the stand-in's Scanner errors in the first offline evaluation. | The key now accepts either answer for that headline; the outcome (no exposure) is still scored. |
+| Country-wide events (China's magnet licences) could not be mapped: every tool was geographic, and a radius around a country centre is meaningless. | Writing the N22 answer key. | Added `find_suppliers_in_country(country, category)`. |
+
 ## 2026-10-09: first real run (Gemini free tier, 3 headlines)
 
 | What went wrong | What caught it | Fix |

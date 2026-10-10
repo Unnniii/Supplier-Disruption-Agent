@@ -1,0 +1,6 @@
+SUPPLY AGREEMENT NG-2024-090
+Supplier: Hsinchu Silicon Ltd (S038), Hsinchu, Taiwan.
+Products: microcontrollers, power management ICs and power MOSFETs.
+
+Clause 5 Second source. Taichung Semiconductor Ltd (S011) is qualified as a full second source for all part numbers. Note: both sites are in western Taiwan, about 80 km apart.
+Clause 6 Force majeure includes earthquake. Notice within 2 days.

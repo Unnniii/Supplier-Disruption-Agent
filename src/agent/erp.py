@@ -28,6 +28,8 @@ EVENT_RADIUS_KM = {
     "severe_weather": 300,
     "earthquake": 200,
     "conflict": 600,
+    "hurricane": 150,
+    "export_control": 30,   # a named plant or city under a ban; country-wide bans use suppliers_in_country
 }
 DEFAULT_RADIUS_KM = 50
 
@@ -75,10 +77,40 @@ def all_suppliers() -> list[dict]:
         return [dict(r) for r in con.execute("SELECT * FROM suppliers ORDER BY supplier_id")]
 
 
+def resolve_route(route: str) -> str:
+    """'Red Sea' and 'Bab el-Mandeb' are the same shipping lane as the Suez Canal."""
+    aliases = json.loads(GAZETTEER_PATH.read_text()).get("route_aliases", {})
+    for alias, canonical in aliases.items():
+        if alias.lower() == route.strip().lower():
+            return canonical
+    return route
+
+
 def suppliers_on_route(route: str) -> list[dict]:
     with _connect() as con:
         return [dict(r) for r in con.execute(
-            "SELECT * FROM suppliers WHERE lower(shipping_route) = lower(?)", (route,))]
+            "SELECT * FROM suppliers WHERE lower(shipping_route) = lower(?)", (resolve_route(route),))]
+
+
+def suppliers_in_country(country: str, category: str | None = None) -> list[dict]:
+    """For country-wide events (export controls, sanctions, war). Filter by
+    category when the event targets one product type, e.g. rare earth magnets."""
+    sql, args = "SELECT * FROM suppliers WHERE lower(country) = lower(?)", [country.strip()]
+    if category:
+        sql += " AND lower(category) = lower(?)"
+        args.append(category.strip())
+    with _connect() as con:
+        return [dict(r) for r in con.execute(sql + " ORDER BY supplier_id", args)]
+
+
+def categories() -> list[str]:
+    with _connect() as con:
+        return [r[0] for r in con.execute("SELECT DISTINCT category FROM suppliers ORDER BY 1")]
+
+
+def countries() -> list[str]:
+    with _connect() as con:
+        return [r[0] for r in con.execute("SELECT DISTINCT country FROM suppliers ORDER BY 1")]
 
 
 def suppliers_using_port(port: str) -> list[dict]:

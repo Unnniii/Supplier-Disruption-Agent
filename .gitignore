@@ -4,6 +4,7 @@
 # generated data (rebuild with: uv run python scripts/seed_erp.py)
 data/erp.db
 data/chroma/
+data/live/
 
 # run logs
 logs/

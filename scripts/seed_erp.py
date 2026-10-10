@@ -7,7 +7,8 @@ The data is deterministic (fixed random seed) so evaluation results are
 repeatable. Suppliers S001-S010 are hand-placed at the locations of real past
 supply chain disruptions; S011-S030 are ordinary suppliers, some of which are
 backups and some of which are deliberate traps (near an event, or in a city that
-appears in an irrelevant headline).
+appears in an irrelevant headline). S031-S041 sit where real 2023-2025
+disruptions happened (export controls, fires, floods, typhoons, canal limits).
 """
 
 from __future__ import annotations
@@ -66,6 +67,23 @@ SUPPLIERS = [
     ("S030", "Casablanca Cables SARL", "Casablanca", "Morocco", 33.5731, -7.5898, "Cables", 2, "Casablanca", "Atlantic", "Southampton"),
 ]
 
+# Added 2026-10-10: suppliers in places with recent (2023-2025) real disruptions.
+# Generated with their own random stream so S001-S030 data stays byte-identical.
+NEW_SUPPLIERS = [
+    ("S031", "Dongguan Discrete Devices Co", "Dongguan", "China", 23.0207, 113.7518, "Electronics", 2, "Yantian", "Suez Canal", "Felixstowe"),
+    ("S032", "Baotou Rare Earth Magnetics", "Baotou", "China", 40.6574, 109.8403, "Rare earth magnets", 2, "Tianjin", "Suez Canal", "Felixstowe"),
+    ("S033", "Ganzhou Magnet Works", "Ganzhou", "China", 25.8292, 114.9336, "Rare earth magnets", 2, "Xiamen", "Suez Canal", "Southampton"),
+    ("S034", "Oswego Aluminium Rolling Inc", "Oswego, New York", "USA", 43.4553, -76.5105, "Aluminium sheet", 1, "New York", "Atlantic", "Liverpool"),
+    ("S035", "Spruce Pine Quartz LLC", "Spruce Pine, North Carolina", "USA", 35.9154, -82.0646, "High-purity quartz", 3, "Charleston", "Atlantic", "Southampton"),
+    ("S036", "Almussafes Interior Trim SL", "Almussafes", "Spain", 39.2936, -0.4146, "Interior trim", 1, "Valencia", "Atlantic", "Southampton"),
+    ("S037", "Haiphong Wire & Cable Co", "Haiphong", "Vietnam", 20.8449, 106.6881, "Wiring harness", 1, "Haiphong", "Suez Canal", "Southampton"),
+    ("S038", "Hsinchu Silicon Ltd", "Hsinchu", "Taiwan", 24.8138, 120.9675, "Electronics", 2, "Kaohsiung", "Suez Canal", "Southampton"),
+    ("S039", "Chesapeake Bearing Co", "York, Pennsylvania", "USA", 39.9626, -76.7277, "Bearings", 1, "Baltimore", "Atlantic", "Liverpool"),
+    ("S040", "Andes Copper Wire SA", "Santiago", "Chile", -33.4489, -70.6693, "Copper wire", 2, "San Antonio", "Panama Canal", "Liverpool"),
+    ("S041", "Guadalajara Electronics SA", "Guadalajara", "Mexico", 20.6597, -103.3496, "Electrical", 2, "Manzanillo", "Panama Canal", "Liverpool"),
+]
+ALL_SUPPLIERS = SUPPLIERS + NEW_SUPPLIERS
+
 # Part names per supplier category. Each supplier makes 2-6 of these.
 PART_NAMES = {
     "Electronics": ["Engine control microcontroller", "Body control module chip", "Parking sensor", "Radar sensor", "Camera module", "Power management IC"],
@@ -92,22 +110,29 @@ PART_NAMES = {
     "Tyres": ["20-inch all-season tyre", "21-inch performance tyre"],
     "Rubber seals": ["Door seal", "Window run channel"],
     "Cables": ["High-voltage cable", "Charging cable assembly"],
+    "Rare earth magnets": ["NdFeB traction motor magnet", "Sensor magnet set", "Speaker magnet"],
+    "Aluminium sheet": ["Aluminium body sheet", "Aluminium closure panel sheet"],
+    "High-purity quartz": ["High-purity quartz sand (for wafer crucibles)", "Quartz glass tubing"],
+    "Interior trim": ["Dashboard moulding", "Door trim panel", "Centre console"],
+    "Bearings": ["Wheel hub bearing", "Gearbox bearing"],
+    "Copper wire": ["Copper magnet wire", "Copper busbar"],
 }
 
-CRITICAL_CATEGORIES = {"Electronics", "Wiring harness", "Battery cells", "Paint pigment", "Castings", "Steel", "E-motor parts"}
+CRITICAL_CATEGORIES = {"Electronics", "Wiring harness", "Battery cells", "Paint pigment", "Castings", "Steel", "E-motor parts",
+                       "Rare earth magnets", "Aluminium sheet", "High-purity quartz"}
 
 
-def build_parts() -> list[tuple]:
+def build_parts(suppliers=SUPPLIERS, rng=rng, start: int = 1) -> list[tuple]:
     parts = []
-    n = 1
-    for s in SUPPLIERS:
+    n = start
+    for s in suppliers:
         sid, category = s[0], s[6]
         names = PART_NAMES[category]
         # hand-placed suppliers make more parts so disruptions hurt
         count = min(len(names), rng.randint(3, 6) if sid <= "S010" else rng.randint(2, 3))
         for name in rng.sample(names, count):
             models = rng.sample(MODELS, rng.randint(1, 3))
-            if category in {"Battery cells", "E-motor parts"}:
+            if category in {"Battery cells", "E-motor parts", "Rare earth magnets"}:
                 models = ["NX-EV"]
             parts.append((
                 f"P{n:03d}",
@@ -123,7 +148,7 @@ def build_parts() -> list[tuple]:
     return parts
 
 
-def build_inventory(parts: list[tuple]) -> list[tuple]:
+def build_inventory(parts: list[tuple], rng=rng) -> list[tuple]:
     rows = []
     for p in parts:
         plants = rng.sample(["PL1", "PL2"], rng.randint(1, 2))
@@ -134,10 +159,10 @@ def build_inventory(parts: list[tuple]) -> list[tuple]:
     return rows
 
 
-def build_purchase_orders(parts: list[tuple]) -> list[tuple]:
-    by_id = {s[0]: s for s in SUPPLIERS}
+def build_purchase_orders(parts: list[tuple], rng=rng, start: int = 1) -> list[tuple]:
+    by_id = {s[0]: s for s in ALL_SUPPLIERS}
     rows = []
-    n = 1
+    n = start
     for p in parts:
         s = by_id[p[3]]
         for _ in range(rng.randint(0, 2)):
@@ -189,15 +214,21 @@ def main() -> None:
     parts = build_parts()
     inventory = build_inventory(parts)
     pos = build_purchase_orders(parts)
+    # New suppliers: separate stream, numbering continues, originals untouched.
+    rng2 = random.Random(2026)
+    new_parts = build_parts(NEW_SUPPLIERS, rng2, start=len(parts) + 1)
+    inventory += build_inventory(new_parts, rng2)
+    pos += build_purchase_orders(new_parts, rng2, start=len(pos) + 1)
+    parts += new_parts
     with sqlite3.connect(DB_PATH) as con:
         con.execute("PRAGMA foreign_keys = ON")
         con.executescript(SCHEMA)
         con.executemany("INSERT INTO plants VALUES (?,?,?,?,?)", PLANTS)
-        con.executemany("INSERT INTO suppliers VALUES (?,?,?,?,?,?,?,?,?,?,?)", SUPPLIERS)
+        con.executemany("INSERT INTO suppliers VALUES (?,?,?,?,?,?,?,?,?,?,?)", ALL_SUPPLIERS)
         con.executemany("INSERT INTO parts VALUES (?,?,?,?,?,?,?,?)", parts)
         con.executemany("INSERT INTO inventory VALUES (?,?,?,?,?)", inventory)
         con.executemany("INSERT INTO purchase_orders VALUES (?,?,?,?,?,?,?,?,?)", pos)
-    print(f"Wrote {DB_PATH.relative_to(ROOT)}: {len(SUPPLIERS)} suppliers, {len(parts)} parts, "
+    print(f"Wrote {DB_PATH.relative_to(ROOT)}: {len(ALL_SUPPLIERS)} suppliers, {len(parts)} parts, "
           f"{len(inventory)} inventory rows, {len(pos)} purchase orders")
 
 
