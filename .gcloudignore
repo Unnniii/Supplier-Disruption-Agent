@@ -1,0 +1,15 @@
+# What `gcloud builds submit` must NOT upload. .env holds the API key.
+.env
+.env.*
+!.env.example
+.git
+.venv
+.pytest_cache
+**/__pycache__
+data/erp.db
+data/chroma/
+data/live/
+logs/
+infra/.terraform/
+infra/*.tfstate*
+infra/terraform.tfvars

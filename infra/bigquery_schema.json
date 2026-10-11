@@ -1,0 +1,140 @@
+[
+  {
+    "name": "run_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "8-character id shared by every headline in one run"
+  },
+  {
+    "name": "run_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When this headline finished (UTC)"
+  },
+  {
+    "name": "provider",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "gemini, ollama, claude or fake"
+  },
+  {
+    "name": "model",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Model name"
+  },
+  {
+    "name": "prompt_version",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Prompt set version"
+  },
+  {
+    "name": "news_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Headline id (L<yyyymmdd>-NN for live, Nxx for the scored set)"
+  },
+  {
+    "name": "headline",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Headline text"
+  },
+  {
+    "name": "kind",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "live, historical, real or synthetic"
+  },
+  {
+    "name": "url",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Source article"
+  },
+  {
+    "name": "status",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "approved, needs_review, no_disruption, no_exposure or error"
+  },
+  {
+    "name": "error",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Error message when status is error"
+  },
+  {
+    "name": "is_disruption",
+    "type": "BOOLEAN",
+    "mode": "NULLABLE",
+    "description": "Scanner verdict"
+  },
+  {
+    "name": "event_type",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "fire, flood, port_strike, ..."
+  },
+  {
+    "name": "supplier_ids",
+    "type": "STRING",
+    "mode": "REPEATED",
+    "description": "Exposed suppliers"
+  },
+  {
+    "name": "high_risk_suppliers",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "How many exposed suppliers are rated high risk"
+  },
+  {
+    "name": "min_days_of_cover",
+    "type": "FLOAT",
+    "mode": "NULLABLE",
+    "description": "Lowest days of stock cover across exposed suppliers"
+  },
+  {
+    "name": "backup_warnings",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Recommended backups that are hit by the same event"
+  },
+  {
+    "name": "revisions",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Times the verifier sent the advice back"
+  },
+  {
+    "name": "input_tokens",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Model input tokens"
+  },
+  {
+    "name": "output_tokens",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Model output tokens, thinking included"
+  },
+  {
+    "name": "cost_usd",
+    "type": "FLOAT",
+    "mode": "NULLABLE",
+    "description": "Model cost (0 on free tiers)"
+  },
+  {
+    "name": "seconds",
+    "type": "FLOAT",
+    "mode": "NULLABLE",
+    "description": "Wall time for this headline"
+  },
+  {
+    "name": "record",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "The full run record as JSON text; query with JSON_VALUE / JSON_QUERY"
+  }
+]

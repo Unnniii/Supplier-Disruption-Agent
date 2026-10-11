@@ -14,3 +14,8 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+# Terraform
+infra/.terraform/
+infra/*.tfstate*
+infra/.terraform.lock.hcl.bak
+infra/terraform.tfvars

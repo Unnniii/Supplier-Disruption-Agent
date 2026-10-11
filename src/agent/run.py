@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -160,6 +161,10 @@ def main() -> None:
     else:
         news = load_news(args.news)
     results = scan(news, args.fake, progress=True, run_id=run_id)
+    if os.getenv("SDA_BQ_TABLE"):
+        from agent.sinks import write_bigquery
+        n = write_bigquery(results)  # raises on failure, so a cloud job shows as failed
+        print(f"Wrote {n} rows to BigQuery table {os.getenv('SDA_BQ_TABLE')}")
     print("\n===== Alerts =====")
     print_alerts(results)
     if args.live:

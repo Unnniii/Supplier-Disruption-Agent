@@ -1,5 +1,7 @@
 # Supplier Disruption Agent
 
+[![CI](https://github.com/Unnniii/Supplier-Disruption-Agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Unnniii/Supplier-Disruption-Agent/actions/workflows/ci.yml)
+
 An AI agent that reads the news, works out which suppliers a disruption hits, checks how many days of stock are left for their parts, and looks up the supplier contract for a backup plan.
 
 It runs against the ERP of **Northgate Motors**, a fictional car maker with two UK plants and 41 suppliers. It has two modes:
@@ -9,7 +11,7 @@ It runs against the ERP of **Northgate Motors**, a fictional car maker with two 
 
 ![Architecture: news in, four AI agents orchestrated by LangGraph, plain-code tools and data, a code verifier, alerts and logs, scored against a hand-written answer key](docs/architecture.png)
 
-> Status: agents, evaluation and live mode are built and tested offline (61 tests). A first 3-headline run on Gemini found bugs, now fixed and logged in [docs/corrections.md](docs/corrections.md). Next: the full scored run on Gemini, and its results in this README.
+> Status: two full scored runs on Gemini (results below), 73 tests, CI on every push, and a daily scan deployable to GCP's free tier with one command (Terraform, Cloud Run Job, Cloud Scheduler, BigQuery). Every bug found along the way is logged in [docs/corrections.md](docs/corrections.md).
 
 ## The agents
 
@@ -140,6 +142,68 @@ One request to GDELT per run; headlines are de-duplicated, capped and saved to `
 
 **Daily on Windows:** `scripts/run_daily.ps1` runs the live scan and appends to `logs/daily.log`. Register it with Task Scheduler using the command at the top of that file.
 
+## Cloud: daily scan on GCP (free tier)
+
+```
+Cloud Scheduler (06:47 London, daily)
+        |  POST .../jobs/sda-daily-scan:run   (as sda-scheduler, run.invoker only)
+        v
+Cloud Run Job  sda-daily-scan   (container from Artifact Registry, runs as sda-job)
+        |  GDELT -> Scanner -> Mapper -> Impact -> Advisor -> Verifier
+        |  Gemini key from Secret Manager
+        v
+BigQuery  supplier_disruption.runs   one row per headline, partitioned by day
+          views: alerts (what touched our suppliers), daily_summary (read / flagged / errors / tokens / cost)
+```
+
+Everything is in Terraform (`infra/`). The image is built by Cloud Build (`cloudbuild.yaml`). `scripts/deploy_gcp.ps1` does the whole deployment in one command.
+
+**Design choices**
+- **A Job, not a Service.** A scan is a batch: it starts, runs for a few minutes and exits. Nothing sits idle and nothing is publicly reachable.
+- **Batch load jobs into BigQuery, not streaming inserts.** One load job per run. Load jobs are free; streaming is billed per row.
+- **The API key never touches Terraform state or the image.** Terraform creates an empty secret, and the deploy script adds the key as a secret version.
+- **Three service accounts with narrow roles.** The build can only push images and write logs. The job can only read its one secret and write to its one dataset. The scheduler can only start this job.
+- **Quota safety.** The job uses `max_retries = 0` and the scheduler retries 0, so a failure never spends the free model quota twice. The per-run call cap is 150 (the free tier allows about 500 a day), and a daily-quota error stops the run cleanly.
+- **Reproducible deploys.** The job runs the image pinned by digest, not `:latest`. A registry cleanup policy keeps 2 images, to stay inside the 0.5 GB free storage.
+- **A budget alert** at 50%, 90% and 100% of £1 a month. It warns; it does not stop spending.
+- **Region `us-central1`,** because the Cloud Run free tier only covers some US regions. A real UK deployment would use `europe-west2` for data residency and pay a little for it.
+
+**Why it stays at about £0** (free allowances per month at the time of writing; check the [Google Cloud free tier](https://cloud.google.com/free) before relying on them)
+
+| Service | Free allowance | This project |
+|---|---|---|
+| Cloud Run | 180,000 vCPU-seconds, 360,000 GiB-seconds | about 30 runs × a few minutes |
+| Cloud Scheduler | 3 jobs per billing account | 1 |
+| Cloud Build | 2,500 build-minutes | about 5 minutes per deploy |
+| Artifact Registry | 0.5 GB | one image of about 0.2 GB compressed, 2 kept |
+| BigQuery | 10 GiB storage, 1 TiB queries; load jobs free | a few MB |
+| Secret Manager | 6 secret versions, 10,000 accesses | 1 version, 30 accesses |
+| Gemini API | free-tier daily request limit | 150 calls at most per run |
+
+The laptop and the cloud job share one Gemini key, and so one daily quota. Don't run the full 34-headline evaluation on a day you also need the cloud scan.
+
+**Deploy** (Windows PowerShell, from the project folder). GCP needs a billing account with a card even for free-tier use.
+
+```powershell
+winget install Google.CloudSDK
+winget install Hashicorp.Terraform
+# close and reopen PowerShell
+gcloud auth login
+gcloud auth application-default login
+.\scripts\deploy_gcp.ps1 -ProjectId <your-project-id> -BillingAccount <XXXXXX-XXXXXX-XXXXXX>
+```
+
+The script runs the job once and prints what landed in BigQuery. After that it runs every morning on its own. Useful afterwards:
+
+```powershell
+gcloud run jobs execute sda-daily-scan --region us-central1 --wait      # run now
+bq query --use_legacy_sql=false "SELECT * FROM supplier_disruption.alerts LIMIT 20"
+```
+
+**Tear down:** `terraform -chdir=infra apply -var project_id=<id> -var protect_data=false`, then `terraform -chdir=infra destroy -var project_id=<id>`. Deleting the project also works.
+
+**Not done yet:** an alert when the job fails (today you see it in the Cloud Run console), Terraform state in a GCS bucket rather than on the laptop, and deploys from GitHub Actions through Workload Identity Federation (no stored keys).
+
 ## Run it
 
 ```bash
@@ -181,5 +245,6 @@ Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise C
 - [x] Fix the worst miss and re-run (before/after numbers): unsafe backups warned 0 of 13 → 13 of 13
 - [ ] Coverage as a structured contract field read by code, not judged by the model
 - [ ] Streamlit app, demo GIF
-- [ ] GCP deployment at £0: Cloud Run Job + Cloud Scheduler + BigQuery, Terraform, budget alert, max 1 instance
+- [x] GCP deployment at £0: Cloud Run Job + Cloud Scheduler + BigQuery, Terraform, budget alert, CI
+- [ ] Failure alerting, remote Terraform state, keyless deploys from GitHub Actions
 - [ ] Real geocoding instead of the gazetteer

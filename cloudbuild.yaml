@@ -1,0 +1,10 @@
+# Builds the cloud image as the sda-build service account (created by infra/main.tf).
+#   gcloud builds submit --config cloudbuild.yaml --substitutions _IMAGE=<region>-docker.pkg.dev/<project>/sda/agent:latest
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_IMAGE}", "."]
+images: ["${_IMAGE}"]
+serviceAccount: "projects/${PROJECT_ID}/serviceAccounts/sda-build@${PROJECT_ID}.iam.gserviceaccount.com"
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1200s

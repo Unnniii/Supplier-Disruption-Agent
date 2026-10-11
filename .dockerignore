@@ -1,0 +1,14 @@
+.git
+.venv
+.env
+.pytest_cache
+**/__pycache__
+data/erp.db
+data/chroma
+data/live
+logs
+eval
+tests
+docs
+infra
+*.md

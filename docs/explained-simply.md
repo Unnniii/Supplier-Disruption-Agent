@@ -43,6 +43,11 @@ This project is a team of robot helpers that read the news every morning and sho
 | `.env.example` | A template for your secret settings (like your Gemini key). Copy it to `.env`. |
 | `.env` | Your real secrets. Lives only on your laptop, never uploaded to GitHub. |
 | `.gitignore` | A "do not upload" list for GitHub (secrets, big generated files, logs). |
+| `Dockerfile` | The recipe for the cloud box: Python, the libraries, the code and the pretend database, packed into one container. |
+| `.dockerignore` | What the recipe leaves out (tests, docs, your secrets), to keep the box small. |
+| `cloudbuild.yaml` | Tells Google Cloud Build how to cook the box and where to put it. |
+| `.gcloudignore` | A "do not upload to Google" list. Most importantly: your `.env` with the key. |
+| `.github/workflows/ci.yml` | Every push to GitHub runs all the tests, a full offline scan and a Terraform check, automatically. The green tick on the README. |
 
 ### `data/`: the pretend world
 
@@ -61,6 +66,16 @@ This project is a team of robot helpers that read the news every morning and sho
 |---|---|
 | `scripts/seed_erp.py` | Builds `erp.db` from scratch: 41 shops, 98 parts. Same result every time, so tests are fair. |
 | `scripts/run_daily.ps1` | Runs live mode every morning on Windows (with Task Scheduler) and writes to `logs/daily.log`. |
+| `scripts/deploy_gcp.ps1` | One command that puts the whole thing on Google Cloud and runs it once. |
+
+### `infra/`: the cloud, written as code (Terraform)
+
+| File | What it is |
+|---|---|
+| `infra/main.tf` | Everything in Google Cloud: the alarm clock (Scheduler), the worker (Cloud Run Job), the notebook (BigQuery), the safe for the key (Secret Manager), three worker badges with only the access they need, and a money alarm. |
+| `infra/variables.tf` | The knobs: project id, region, schedule time, how many headlines, the call cap. |
+| `infra/outputs.tf` | What Terraform tells you after deploying: commands to run the job now and see the alerts. |
+| `infra/bigquery_schema.json` | The columns of the BigQuery table: one row per headline per run. |
 
 ### `src/agent/`: the brain
 
@@ -74,9 +89,10 @@ This project is a team of robot helpers that read the news every morning and sho
 | `tools.py` | The tools each robot is allowed to use. Each robot only gets its own tools. |
 | `erp.py` | Plain code that reads the database: "which shops are near here?", "how many days of stock?" |
 | `rag.py` | Contract search. Splits contracts into clauses and finds the best matching ones. |
-| `llm.py` | The phone line to the AI. Can call Gemini (free), Ollama (on your laptop) or Claude (paid). Also has the cap that stops a run after 200 calls. |
+| `llm.py` | The phone line to the AI. Can call Gemini (free), Ollama (on your laptop) or Claude (paid). Also has the cap that stops a run after 300 calls (150 in the cloud), and stops at once if the free daily quota is used up. |
 | `schemas.py` | The forms each robot must fill in. If the answer is not in the right shape, it is rejected. |
 | `config.py` | All the settings in one place: which AI, the cap, file locations. |
+| `sinks.py` | Copies each run's results into BigQuery when running in the cloud, because the cloud box forgets everything when it stops. |
 | `fake.py` | A pretend AI made of simple rules. Lets you test everything for free with no internet. |
 | `__init__.py` | An empty file that tells Python "this folder is a package". |
 
@@ -96,6 +112,7 @@ This project is a team of robot helpers that read the news every morning and sho
 | `tests/test_data_and_map.py` | Checks the pretend data makes sense, the map step finds the right shops for every story, and new shops did not change old ones. |
 | `tests/test_agents_graph.py` | Checks the boss sends robots in the right order, handles mistakes, reads live news safely and scores correctly. |
 | `tests/test_llm_adapters.py` | Checks the phone lines to Gemini and Ollama, the cap, and the fixes from the first real run. |
+| `tests/test_cloud.py` | Checks the BigQuery writer, that its columns match the table, and that the deploy files exist. |
 | `tests/conftest.py` | Setup for tests: build the database if missing, never use the internet. |
 | `tests/__init__.py` | Empty file so tests can share helpers. |
 
@@ -127,6 +144,16 @@ run.py
        -> Advisor  (agents.py + rag.py)   contract search
        -> Verifier (agents.py)            rule checks, may send Advisor back once
   -> prints the alert and writes logs/runs.jsonl
+  -> in the cloud only: sinks.py copies the rows into BigQuery
+```
+
+In the cloud, every morning:
+
+```
+Cloud Scheduler (alarm clock, 06:47)
+  -> starts the Cloud Run Job (the container from the Dockerfile)
+       -> run.py --live, exactly as on the laptop
+       -> rows land in BigQuery: look at the "alerts" view
 ```
 
 ## Say it in an interview (30 seconds)

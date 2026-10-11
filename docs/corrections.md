@@ -2,6 +2,15 @@
 
 Every bug, wrong assumption and process failure, with what caught it. Newest first.
 
+## 2026-10-11: deploying to GCP
+
+| What could have gone wrong | What caught it | Fix |
+|---|---|---|
+| The container would have been about 0.75 GB unpacked, mostly Streamlit's data libraries, which nothing uses yet. That would push it past the 0.5 GB free image storage. | Measuring the installed size before writing the Dockerfile. | Streamlit moved to an optional `ui` extra; the cloud image installs only what the scan needs (about 445 MB unpacked). |
+| `gcloud builds submit` uploads the whole folder, which on the laptop includes `.env` with the API key. | Listing the files gcloud would upload (`gcloud meta list-files-for-upload`). | `.gcloudignore` excludes `.env`, and the check was repeated: only `.env.example` goes up. |
+| On new GCP projects the default Cloud Build identity often cannot push images, which fails the first deploy. | Design review. | Builds run as a dedicated `sda-build` account with three narrow roles. |
+| Windows PowerShell 5.1 treats gcloud's normal progress messages as errors when the script is set to stop on errors. | Known PowerShell behaviour, checked before the first real deploy. | The deploy script checks exit codes instead. It was parsed with PowerShell 7 and dry-run end to end with stand-in commands. |
+
 ## 2026-10-11: second full run hit the daily quota
 
 | What went wrong | What caught it | Fix |
