@@ -106,7 +106,28 @@ uv run python -m agent.evaluate       # score it
 | Contract search | right contract ranked first, and in the top 4, for 14 questions (hit@1, hit@4, MRR) |
 | Pipeline | verifier send-backs, rule corrections, JSON repairs, errors, tokens, cost, time |
 
-**Results:** not yet run on Gemini for all 34 headlines. The offline keyword stand-in (`--fake`) gets 32 of 34 headlines fully right; that is the floor a real model has to beat, not a result.
+**Results** (Gemini `gemini-3.1-flash-lite`, free tier, all 34 headlines, temperature 0):
+
+| What | Before (run `f986f123`) | After (run `6d053935`) |
+|---|---|---|
+| Headlines fully right | 34 / 34 | 34 / 34 |
+| Scanner accuracy | 100% | 100% |
+| Supplier precision / recall | 100% / 100% | 100% / 100% |
+| Backup supplier named correctly | 100% of 51 | 100% of 51 |
+| Backup coverage correct | 92% of 51 | 94% of 51 |
+| Backups hit by the same event | 13, **all 13 with no warning** | 13, **0 with no warning** |
+| Contract search hit@1 / hit@4 (MRR) | 79% / 100% (0.893) | 79% / 100% (0.893) |
+| Impact ratings corrected by the rule | 2 | 2 |
+| Tokens per headline | 8,168 | 8,358 |
+| Cost | $0 | $0 |
+
+**How to read this honestly.**
+- The answer key has 34 headlines and was written by the builder of the system, so a perfect mapping score shows the tools work, not that the system generalises. It needs harder and more numerous cases.
+- The interesting result is the row the original score did not measure. The first full run scored 34/34 and still recommended, for example, a Taiwanese backup for a Taiwanese supplier in a Taiwan earthquake. Every one of those 13 recommendations was "correct" against the contracts. A deterministic check now flags them, and the evaluation counts them.
+- The remaining coverage errors are inconsistency, not ignorance. The same contract (S002 → S012, and S027 → S026) gets "full" on one headline and "partial" on another. The next fix is to let code read coverage from a structured contract field instead of asking the model each time.
+- The after run was split in two by the free tier's daily quota (500 requests per model) and finished with `--resume` under the same run id.
+
+The offline keyword stand-in (`--fake`) gets 32 of 34 headlines fully right. That is the floor a real model has to beat.
 
 ## Live mode
 
@@ -142,7 +163,8 @@ Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise C
 
 - The verifier checks that a cited clause names the backup, not that the backup is in the right direction. For example, Taichung's contract names Hitachinaka because Taichung is Hitachinaka's backup. A model could misread that as "Hitachinaka is Taichung's backup" and pass the check.
 - When the Scanner names both a country and a city, a wide radius (war: 600 km) from the city can catch suppliers in neighbouring countries. The evaluation will show how often this happens.
-- The Ollama path is tested with stand-ins only. The Gemini path has had one real 3-headline run (see the corrections log).
+- Coverage (full / partial / none) is judged by the model on every headline, so the same contract can get different answers on different days (S002 and S027 in the results above).
+- The Ollama path is tested with stand-ins only. The Gemini path has two full scored runs.
 - Live mode is tested against recorded GDELT replies, not the live service (the build sandbox cannot reach it). GDELT's language filter syntax is not confirmed in its public docs, so live mode retries without it if the first query is rejected.
 - The answer key was written by the same person who built the system. An independent second annotator would make the scores more trustworthy.
 - Gemini model names change; if `gemini-3.1-flash-lite` returns 404, set `SDA_MODEL` to the current Flash-Lite name shown in AI Studio.
@@ -155,8 +177,9 @@ Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise C
 - [x] Evaluation script: precision, recall, backup accuracy, retrieval hit rate, cost
 - [x] 11 more suppliers and 14 more headlines from real 2023 to 2025 disruptions
 - [x] Live mode (GDELT) and a daily Windows schedule
-- [ ] Full scored run on Gemini; results in this README
-- [ ] Fix the worst miss and re-run (before/after numbers)
+- [x] Full scored run on Gemini; results in this README
+- [x] Fix the worst miss and re-run (before/after numbers): unsafe backups warned 0 of 13 → 13 of 13
+- [ ] Coverage as a structured contract field read by code, not judged by the model
 - [ ] Streamlit app, demo GIF
 - [ ] GCP deployment at £0: Cloud Run Job + Cloud Scheduler + BigQuery, Terraform, budget alert, max 1 instance
 - [ ] Real geocoding instead of the gazetteer
