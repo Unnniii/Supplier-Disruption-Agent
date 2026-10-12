@@ -184,6 +184,12 @@ def to_news(articles: list[dict], limit: int, source: str = "gdelt") -> list[dic
     return out
 
 
+def _save(news: list[dict]) -> None:
+    LIVE_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M")
+    (LIVE_DIR / f"{stamp}.json").write_text(json.dumps(news, indent=2, ensure_ascii=False))
+
+
 def fetch_live_news(limit: int = 15, get: Callable[[dict], str] | None = None,
                     sleep: Callable[[float], None] | None = None,
                     rss_get: Callable[[], str] | None = None,
@@ -211,6 +217,7 @@ def fetch_live_news(limit: int = 15, get: Callable[[dict], str] | None = None,
     if forced:
         sources = [s for s in sources if s[0] == forced] or sources
     errors: list[str] = []
+    empty: list[str] = []
     for name, fetch in sources:
         try:
             articles = fetch()
@@ -219,10 +226,19 @@ def fetch_live_news(limit: int = 15, get: Callable[[dict], str] | None = None,
             print(f"Live source {name} unavailable: {str(e)[:120]}", flush=True)
             continue
         news = to_news(articles, limit, name)
-        LIVE_DIR.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M")
-        (LIVE_DIR / f"{stamp}.json").write_text(json.dumps(news, indent=2, ensure_ascii=False))
+        if not news:
+            # GDELT answers "200 OK, no articles" when it is quietly throttling,
+            # so an empty answer is not trusted: try the next source.
+            empty.append(name)
+            print(f"Live source {name} returned 0 usable headlines; trying the next source.", flush=True)
+            continue
+        print(f"Live source {name}: {len(news)} headlines.", flush=True)
+        _save(news)
         return news
+    if empty:  # every source answered, none had anything: a genuinely quiet day
+        print(f"No usable headlines from any source ({', '.join(empty)} answered empty).", flush=True)
+        _save([])
+        return []
     raise RuntimeError("Live fetch failed from every source: " + " | ".join(errors))
 
 

@@ -374,3 +374,23 @@ def test_feeds_are_used_when_gdelt_refuses(tmp_path, monkeypatch):
     news = live.fetch_live_news(limit=5, get=gdelt, sleep=lambda s: None, rss_get=never,
                                 feed_get=lambda url: re.sub(r"<pubDate>.*?</pubDate>", "", LOADSTAR_SAMPLE))
     assert news and {n["source"] for n in news} == {"feeds"}     # undated items are kept, so no clock dependence
+
+
+def test_empty_gdelt_answer_falls_through_to_feeds(tmp_path, monkeypatch):
+    import json as _json
+    from agent import live
+    monkeypatch.setattr(live, "LIVE_DIR", tmp_path)
+    feed = re.sub(r"<pubDate>.*?</pubDate>", "", LOADSTAR_SAMPLE)
+    news = live.fetch_live_news(limit=5, get=lambda p: _json.dumps({"articles": []}), sleep=lambda s: None,
+                                feed_get=lambda url: feed, rss_get=lambda: GOOGLE_NEWS_SAMPLE)
+    assert news and news[0]["source"] == "feeds"        # 200 OK with no articles is not trusted
+
+
+def test_every_source_empty_is_a_quiet_day_not_a_crash(tmp_path, monkeypatch):
+    import json as _json
+    from agent import live
+    monkeypatch.setattr(live, "LIVE_DIR", tmp_path)
+    empty_rss = '<?xml version="1.0"?><rss version="2.0"><channel><title>x</title></channel></rss>'
+    news = live.fetch_live_news(limit=5, get=lambda p: _json.dumps({}), sleep=lambda s: None,
+                                feed_get=lambda url: empty_rss, rss_get=lambda: empty_rss)
+    assert news == []

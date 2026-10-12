@@ -157,7 +157,7 @@ def main() -> None:
     elif args.live:
         from agent.live import fetch_live_news
         news = fetch_live_news(limit=args.max_live)
-        print(f"Fetched {len(news)} live headlines from {news[0]['source'] if news else 'no source'} (saved to data/live/)")
+        print(f"Fetched {len(news)} live headlines (saved to data/live/)")
     else:
         news = load_news(args.news)
     results = scan(news, args.fake, progress=True, run_id=run_id)
