@@ -7,7 +7,7 @@ An AI agent that reads the news, works out which suppliers a disruption hits, ch
 It runs against the ERP of **Northgate Motors**, a fictional car maker with two UK plants and 41 suppliers. It has two modes:
 
 - **Replay (scored):** 34 headlines, 21 of them real disruptions from 2011 to 2025 (Suez blockage, Renesas chip fire, Thailand floods, Tohoku earthquake, Shanghai lockdown, Red Sea attacks, Panama Canal drought, Baltimore bridge collapse, Hurricane Helene at Spruce Pine, Valencia floods, Typhoon Yagi, Hualien earthquake, China's rare earth magnet licences, the Nexperia chip export ban, the Oswego aluminium mill fire), plus non-events and deliberate traps. Every headline has a hand-written answer key, so accuracy is measured, not claimed.
-- **Live (daily):** today's real headlines from GDELT, a free global news index (with Google News RSS as the fallback when GDELT refuses), run through the same agents. Live results cannot be scored, because nobody has written the answer key for today.
+- **Live (daily):** today's real headlines from GDELT, a free global news index, with publisher RSS feeds (BBC, Supply Chain Dive, FreightWaves, The Loadstar, gCaptain) and Google News as fallbacks, run through the same agents. Live results cannot be scored, because nobody has written the answer key for today.
 
 ![Architecture: news in, four AI agents orchestrated by LangGraph, plain-code tools and data, a code verifier, alerts and logs, scored against a hand-written answer key](docs/architecture.png)
 

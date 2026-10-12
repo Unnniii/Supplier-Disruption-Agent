@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 
+import re
+
 import pytest
 
 from agent import agents
@@ -277,7 +279,11 @@ def test_gdelt_rate_limit_falls_back_to_google_news(tmp_path, monkeypatch):
         calls.append(params["query"])
         raise RuntimeError("Client error '429 Too Many Requests'")
 
-    news = live.fetch_live_news(limit=5, get=gdelt, sleep=lambda s: None, rss_get=lambda: GOOGLE_NEWS_SAMPLE)
+    def feeds_down(url):
+        raise RuntimeError("503 Service Unavailable")
+
+    news = live.fetch_live_news(limit=5, get=gdelt, sleep=lambda s: None, rss_get=lambda: GOOGLE_NEWS_SAMPLE,
+                                feed_get=feeds_down)
     assert len(calls) == 2                                  # both GDELT queries tried first
     assert [n["source"] for n in news] == ["google_news", "google_news"]
     assert news[0]["headline"] == "Dockworkers strike halts container traffic at Rotterdam"  # publisher suffix removed
@@ -291,8 +297,9 @@ def test_live_fetch_fails_clearly_when_every_source_fails(tmp_path, monkeypatch)
     def down(*a):
         raise RuntimeError("429 Too Many Requests")
 
-    with pytest.raises(RuntimeError, match="every source.*GDELT.*Google News"):
-        live.fetch_live_news(limit=5, get=down, sleep=lambda s: None, rss_get=lambda: "<html>blocked</html")
+    with pytest.raises(RuntimeError, match="every source.*gdelt.*feeds.*google_news"):
+        live.fetch_live_news(limit=5, get=down, sleep=lambda s: None, rss_get=lambda: "<html>blocked</html",
+                             feed_get=down)
 
 
 def test_gdelt_success_does_not_touch_google_news(tmp_path, monkeypatch):
@@ -304,7 +311,7 @@ def test_gdelt_success_does_not_touch_google_news(tmp_path, monkeypatch):
         raise AssertionError("RSS should not be called")
 
     ok = _json.dumps({"articles": [{"title": "Port strike halts container handling at Antwerp", "seendate": "20261012T080000Z"}]})
-    news = live.fetch_live_news(limit=3, get=lambda p: ok, rss_get=never)
+    news = live.fetch_live_news(limit=3, get=lambda p: ok, rss_get=never, feed_get=never)
     assert news[0]["source"] == "gdelt"
 
 
@@ -318,3 +325,52 @@ def test_live_source_switch_goes_straight_to_google_news(tmp_path, monkeypatch):
 
     news = live.fetch_live_news(limit=1, get=never, rss_get=lambda: GOOGLE_NEWS_SAMPLE)
     assert len(news) == 1 and news[0]["source"] == "google_news"
+
+
+BBC_SAMPLE = """<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>BBC News</title>
+<item><title>Strike shuts Antwerp port terminals for second day</title><link>https://www.bbc.co.uk/news/a1</link>
+<pubDate>Mon, 12 Oct 2026 07:00:00 GMT</pubDate></item>
+<item><title>Bank of England holds interest rates</title><link>https://www.bbc.co.uk/news/a2</link>
+<pubDate>Mon, 12 Oct 2026 08:00:00 GMT</pubDate></item>
+<item><title>Fire at chip plant halts output</title><link>https://www.bbc.co.uk/news/a3</link>
+<pubDate>Wed, 07 Oct 2026 08:00:00 GMT</pubDate></item>
+</channel></rss>"""
+
+LOADSTAR_SAMPLE = """<?xml version="1.0"?><rss version="2.0"><channel><title>The Loadstar</title>
+<item><title>Typhoon forces closure of Kaohsiung container terminals</title><link>https://theloadstar.com/x</link>
+<pubDate>Mon, 12 Oct 2026 09:30:00 +0000</pubDate></item></channel></rss>"""
+
+
+def test_publisher_feeds_filter_recent_disruptions_and_survive_one_feed_failing():
+    from datetime import datetime, timezone
+    from agent import live
+
+    def feed_get(url):
+        if "bbci" in url and "business" in url:
+            return BBC_SAMPLE
+        if "theloadstar" in url:
+            return LOADSTAR_SAMPLE
+        raise RuntimeError("403 Forbidden")              # the other feeds fail
+
+    got = live.fetch_feeds(feed_get, now=datetime(2026, 10, 12, 12, tzinfo=timezone.utc))
+    titles = [a["title"] for a in got]
+    assert titles == ["Typhoon forces closure of Kaohsiung container terminals",   # newest first
+                      "Strike shuts Antwerp port terminals for second day"]
+    # "Bank of England" dropped (no disruption word; "ban" must not match "Bank"),
+    # the chip-plant fire dropped (older than 36 hours)
+    assert got[0]["domain"] == "theloadstar.com"
+
+
+def test_feeds_are_used_when_gdelt_refuses(tmp_path, monkeypatch):
+    from agent import live
+    monkeypatch.setattr(live, "LIVE_DIR", tmp_path)
+
+    def gdelt(params):
+        raise RuntimeError("429 Too Many Requests")
+
+    def never():
+        raise AssertionError("Google News should not be needed")
+
+    news = live.fetch_live_news(limit=5, get=gdelt, sleep=lambda s: None, rss_get=never,
+                                feed_get=lambda url: re.sub(r"<pubDate>.*?</pubDate>", "", LOADSTAR_SAMPLE))
+    assert news and {n["source"] for n in news} == {"feeds"}     # undated items are kept, so no clock dependence
