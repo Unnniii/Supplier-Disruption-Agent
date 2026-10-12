@@ -78,7 +78,7 @@ try {
 } finally { Pop-Location }
 
 Step "2/5 Gemini key -> Secret Manager"
-$existing = gcloud secrets versions list gemini-api-key --filter="state=ENABLED" --format="value(name)" --limit=1
+$existing = gcloud secrets versions list gemini-api-key --filter="state:ENABLED" --format="value(name)" --limit=1
 Check "gcloud secrets versions list"
 if ($existing) {
     Write-Host "Secret already has a key (version $existing). To replace it: gcloud secrets versions add gemini-api-key --data-file=<file>"
@@ -102,8 +102,15 @@ if ($existing) {
 }
 
 Step "3/5 Cloud Build: container image"
-gcloud builds submit --config cloudbuild.yaml --substitutions "_IMAGE=${image}:latest" .
-Check "gcloud builds submit"
+# New service accounts and a just-enabled Cloud Build API can take a few minutes
+# to be recognised everywhere, so the first build may get PERMISSION_DENIED.
+for ($try = 1; $try -le 4; $try++) {
+    gcloud builds submit --config cloudbuild.yaml --substitutions "_IMAGE=${image}:latest" .
+    if ($LASTEXITCODE -eq 0) { break }
+    if ($try -eq 4) { Check "gcloud builds submit" }
+    Write-Host "Build failed (attempt $try of 4). New permissions can take a few minutes to apply; waiting 90s and retrying..." -ForegroundColor Yellow
+    Start-Sleep -Seconds 90
+}
 $digest = gcloud artifacts docker images describe "${image}:latest" --format="value(image_summary.digest)"
 Check "read image digest"
 Write-Host "Image: $image@$digest"
