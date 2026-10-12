@@ -2,6 +2,14 @@
 
 Every bug, wrong assumption and process failure, with what caught it. Newest first.
 
+## 2026-10-12: first cloud run
+
+| What went wrong | What caught it | Fix |
+|---|---|---|
+| The first Cloud Run scan crashed: GDELT answered `429 Too Many Requests` before we had asked anything. Cloud Run sends traffic from IP addresses shared with other Google Cloud users, and GDELT limits by IP. Live mode had only ever been tested against recorded replies. | The job's logs (`gcloud logging read`). | Google News RSS is now the fallback when GDELT refuses. Each headline records which source it came from. `SDA_LIVE_SOURCE=google_news` forces the fallback, so it can be tested from a laptop where GDELT works. |
+| The first image build failed with `PERMISSION_DENIED` seconds after its service account was created. | The deploy output. | The deploy script retries the build while new permissions spread (up to 4 attempts, 90 s apart). The second attempt succeeded. |
+| `gcloud auth application-default login` failed twice on the consent screen. | The user's terminal. | The deploy script falls back to a short-lived token from the normal gcloud login. |
+
 ## 2026-10-11: deploying to GCP
 
 | What could have gone wrong | What caught it | Fix |

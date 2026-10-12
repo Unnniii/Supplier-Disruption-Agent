@@ -253,3 +253,68 @@ def test_evaluation_counts_unwarned_correlated_backups():
     after = score_run([{**rec, "backup_warnings": [{"supplier_id": "S1", "backup_supplier_id": "S2"}]}], truth)
     assert (before["backups_hit_by_same_event"], before["backups_hit_by_same_event_unwarned"]) == (1, 1)
     assert (after["backups_hit_by_same_event"], after["backups_hit_by_same_event_unwarned"]) == (1, 0)
+
+
+GOOGLE_NEWS_SAMPLE = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel>
+<generator>NFE/5.0</generator><title>"port strike" when:1d - Google News</title>
+<item><title>Dockworkers strike halts container traffic at Rotterdam - Reuters</title>
+<link>https://news.google.com/rss/articles/CBMiabc?oc=5</link><guid isPermaLink="false">CBMiabc</guid>
+<pubDate>Mon, 12 Oct 2026 08:15:00 GMT</pubDate><description>&lt;a href="x"&gt;...&lt;/a&gt;</description>
+<source url="https://www.reuters.com">Reuters</source></item>
+<item><title>Flooding forces closure of electronics plants near Penang - The Star</title>
+<link>https://news.google.com/rss/articles/CBMidef?oc=5</link>
+<pubDate>Mon, 12 Oct 2026 06:00:00 GMT</pubDate><source url="https://www.thestar.com.my">The Star</source></item>
+</channel></rss>"""
+
+
+def test_gdelt_rate_limit_falls_back_to_google_news(tmp_path, monkeypatch):
+    from agent import live
+    monkeypatch.setattr(live, "LIVE_DIR", tmp_path)
+    calls = []
+
+    def gdelt(params):
+        calls.append(params["query"])
+        raise RuntimeError("Client error '429 Too Many Requests'")
+
+    news = live.fetch_live_news(limit=5, get=gdelt, sleep=lambda s: None, rss_get=lambda: GOOGLE_NEWS_SAMPLE)
+    assert len(calls) == 2                                  # both GDELT queries tried first
+    assert [n["source"] for n in news] == ["google_news", "google_news"]
+    assert news[0]["headline"] == "Dockworkers strike halts container traffic at Rotterdam"  # publisher suffix removed
+    assert news[0]["event_date"] == "2026-10-12" and "www.reuters.com" in news[0]["body"]
+
+
+def test_live_fetch_fails_clearly_when_every_source_fails(tmp_path, monkeypatch):
+    from agent import live
+    monkeypatch.setattr(live, "LIVE_DIR", tmp_path)
+
+    def down(*a):
+        raise RuntimeError("429 Too Many Requests")
+
+    with pytest.raises(RuntimeError, match="every source.*GDELT.*Google News"):
+        live.fetch_live_news(limit=5, get=down, sleep=lambda s: None, rss_get=lambda: "<html>blocked</html")
+
+
+def test_gdelt_success_does_not_touch_google_news(tmp_path, monkeypatch):
+    import json as _json
+    from agent import live
+    monkeypatch.setattr(live, "LIVE_DIR", tmp_path)
+
+    def never():
+        raise AssertionError("RSS should not be called")
+
+    ok = _json.dumps({"articles": [{"title": "Port strike halts container handling at Antwerp", "seendate": "20261012T080000Z"}]})
+    news = live.fetch_live_news(limit=3, get=lambda p: ok, rss_get=never)
+    assert news[0]["source"] == "gdelt"
+
+
+def test_live_source_switch_goes_straight_to_google_news(tmp_path, monkeypatch):
+    from agent import live
+    monkeypatch.setattr(live, "LIVE_DIR", tmp_path)
+    monkeypatch.setenv("SDA_LIVE_SOURCE", "google_news")
+
+    def never(params):
+        raise AssertionError("GDELT should be skipped")
+
+    news = live.fetch_live_news(limit=1, get=never, rss_get=lambda: GOOGLE_NEWS_SAMPLE)
+    assert len(news) == 1 and news[0]["source"] == "google_news"
