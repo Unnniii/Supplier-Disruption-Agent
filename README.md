@@ -158,6 +158,8 @@ BigQuery  supplier_disruption.runs   one row per headline, partitioned by day
 
 Everything is in Terraform (`infra/`). The image is built by Cloud Build (`cloudbuild.yaml`). `scripts/deploy_gcp.ps1` does the whole deployment in one command.
 
+**First live cloud run** (12 October 2026, 15 real headlines from publisher feeds; GDELT and Google News refused Cloud Run's IPs): 7 judged disruptions, 2 alerts, 0 errors, 81,094 tokens, $0. Both alerts are debatable. "Shippers stressing over risks from Suez Canal and Red Sea transits" flagged all 15 Suez-route suppliers, but it describes an ongoing risk, not a new event. A Mexican trucker shortage was labelled an export control. Traps were handled: "BD strikes supply chain pact" was rejected, and Hormuz tanker attacks were judged real but with no supplier exposed. The answer key has no "risk commentary versus actual event" cases; it needs some.
+
 **Design choices**
 - **A Job, not a Service.** A scan is a batch: it starts, runs for a few minutes and exits. Nothing sits idle and nothing is publicly reachable.
 - **Batch load jobs into BigQuery, not streaming inserts.** One load job per run. Load jobs are free; streaming is billed per row.
@@ -227,6 +229,7 @@ Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise C
 
 - The verifier checks that a cited clause names the backup, not that the backup is in the right direction. For example, Taichung's contract names Hitachinaka because Taichung is Hitachinaka's backup. A model could misread that as "Hitachinaka is Taichung's backup" and pass the check.
 - When the Scanner names both a country and a city, a wide radius (war: 600 km) from the city can catch suppliers in neighbouring countries. The evaluation will show how often this happens.
+- Live mode over-alerts on articles about ongoing risk ("shippers worried about the Red Sea") as if they were new events. The answer key does not test this yet.
 - Coverage (full / partial / none) is judged by the model on every headline, so the same contract can get different answers on different days (S002 and S027 in the results above).
 - The Ollama path is tested with stand-ins only. The Gemini path has two full scored runs.
 - Live mode is tested against recorded GDELT replies, not the live service (the build sandbox cannot reach it). GDELT's language filter syntax is not confirmed in its public docs, so live mode retries without it if the first query is rejected.
