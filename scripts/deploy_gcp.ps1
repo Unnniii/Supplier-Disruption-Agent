@@ -5,7 +5,7 @@
 #   winget install Hashicorp.Terraform
 #   (close and reopen PowerShell)
 #   gcloud auth login
-#   gcloud auth application-default login
+#   gcloud auth application-default login   (optional; if it fails, the script uses your gcloud login)
 #
 # Deploy (re-run any time; it only changes what changed):
 #   .\scripts\deploy_gcp.ps1 -ProjectId my-project-id -BillingAccount XXXXXX-XXXXXX-XXXXXX
@@ -37,8 +37,18 @@ foreach ($tool in "gcloud", "terraform") {
         throw "$tool is not installed. See the setup lines at the top of this script."
     }
 }
+# Terraform needs credentials. Prefer Application Default Credentials; if that
+# login is missing (its consent screen often fails), hand Terraform a short-lived
+# token from the normal gcloud login instead. Valid ~1 hour: enough for a deploy.
+$useAdc = $true
 gcloud auth application-default print-access-token *> $null
-if ($LASTEXITCODE -ne 0) { throw "Run: gcloud auth application-default login   (Terraform uses that login)" }
+if ($LASTEXITCODE -ne 0) {
+    $useAdc = $false
+    $token = gcloud auth print-access-token
+    if ($LASTEXITCODE -ne 0 -or -not $token) { throw "Not logged in. Run: gcloud auth login" }
+    $env:GOOGLE_OAUTH_ACCESS_TOKEN = $token
+    Write-Host "Using your gcloud login for Terraform (application-default login not found)."
+}
 
 gcloud config set project $ProjectId | Out-Null; Check "gcloud config set project"
 $image = "$Region-docker.pkg.dev/$ProjectId/sda/agent"
@@ -53,7 +63,7 @@ if ($billing -ne "True") {
     throw "Billing is not enabled on $ProjectId. Link a billing account (free tier still needs one): gcloud billing projects link $ProjectId --billing-account=XXXXXX-XXXXXX-XXXXXX"
 }
 # Terraform runs as you; bill its API quota to this project (the budgets API insists).
-gcloud auth application-default set-quota-project $ProjectId | Out-Null; Check "set ADC quota project"
+if ($useAdc) { gcloud auth application-default set-quota-project $ProjectId | Out-Null; Check "set ADC quota project" }
 
 Step "1/5 Terraform: APIs, registry, secret, build identity"
 Push-Location infra
