@@ -42,11 +42,6 @@ def test_new_supplier_on_known_event_escalates():
     assert d["event_status"] == "escalated" and d["new_suppliers"] == ["S004"]
 
 
-def test_higher_severity_escalates():
-    d = decide([_ev(max_severity="medium")], RED_SEA, ["S001", "S002", "S003"], "2026-03-03")
-    assert d["event_status"] == "escalated" and "severity up" in d["matched_on"]
-
-
 def test_partial_supplier_overlap_of_a_different_event_is_new():
     strike = {"event_type": "port_strike", "ports": ["Felixstowe"], "severity": "high"}
     d = decide([_ev(supplier_ids=[f"S{i:03d}" for i in range(1, 16)])], strike,
@@ -154,3 +149,92 @@ def test_full_sequence_with_the_stand_in_model_scores_10_of_10():
     ev = score_events(records, seq)
     assert ev["decisions_right"] == len(seq) and ev["grouping_accuracy"] == 1.0
     assert ev["alerts"] < ev["alerts_without_memory"]
+
+
+# --- review fixes: noisy model labels, save order, empty table ----------------------
+
+def test_same_place_with_a_relabelled_type_still_matches_via_shared_supplier():
+    flood = _ev(event_type="flood", event_types=["flood"], locations=["taipei"], supplier_ids=["S038"])
+    scan = {"event_type": "severe_weather", "places": ["Taipei", "Taichung"], "severity": "high"}
+    d = decide([flood], scan, ["S038", "S011"], "2026-03-10")
+    assert d["event_id"] == "EV-1" and d["event_status"] == "escalated"     # not a "new" event
+
+
+def test_one_level_severity_wobble_is_not_an_escalation():
+    d = decide([_ev(max_severity="medium")], RED_SEA, ["S001", "S002", "S003"], "2026-03-03")
+    assert d["event_status"] == "ongoing"
+    d = decide([_ev(max_severity="low")], RED_SEA, ["S001", "S002", "S003"], "2026-03-03")
+    assert d["event_status"] == "escalated" and "low -> high" in d["matched_on"]
+
+
+def test_new_hazard_at_the_same_plant_escalates():
+    fire = _ev(event_type="fire", event_types=["fire"], locations=["hitachinaka"], supplier_ids=["S001"])
+    flood = {"event_type": "flood", "places": ["Hitachinaka"], "severity": "high"}
+    d = decide([fire], flood, ["S001"], "2026-03-06")
+    assert d["event_status"] == "escalated" and "now also flood" in d["matched_on"]
+
+
+def test_type_flip_on_a_strong_supplier_match_stays_ongoing():
+    d = decide([_ev(event_types=["route_blocked"])], {"event_type": "conflict", "countries": ["Yemen"],
+               "severity": "high"}, ["S001", "S002", "S003"], "2026-03-03")
+    assert d["event_status"] == "ongoing"          # Red Sea "conflict" vs "route_blocked": same 15 suppliers
+
+
+def test_sequence_survives_model_label_noise(monkeypatch):
+    """Real models relabel the same event and wobble on severity; the decisions must not change."""
+    from agent.evaluate import score_events
+    from agent.fake import FakeLLM
+    from agent.run import load_sequence, scan
+    real = FakeLLM._scanner
+    flips = {"route_blocked": "conflict", "flood": "severe_weather", "fire": "explosion"}
+    calls = {"n": 0}
+
+    def noisy(self, p, results):
+        out = real(self, p, results)
+        if out.get("is_disruption"):
+            calls["n"] += 1
+            if calls["n"] % 2 == 0:
+                out["event_type"] = flips.get(out["event_type"], out["event_type"])
+            out["severity"] = "medium" if calls["n"] % 3 else "high"
+        return out
+
+    monkeypatch.setattr(FakeLLM, "_scanner", noisy)
+    seq = load_sequence()
+    ev = score_events(scan(seq, fake=True, log=False, memory=EventMemory(MemoryStore())), seq)
+    assert ev["decisions_right"] == len(seq), [r for r in ev["rows"] if not r["right"]]
+
+
+def test_memory_is_not_saved_if_storing_the_alerts_fails(monkeypatch):
+    import sys
+
+    import pytest
+
+    from agent import run as run_mod
+    saved = []
+    monkeypatch.setattr(MemoryStore, "save", lambda self, rows: saved.append(rows))
+    monkeypatch.setenv("SDA_BQ_TABLE", "p.d.runs")
+
+    def broken(records, *a, **k):
+        raise RuntimeError("BigQuery down")
+
+    monkeypatch.setattr("agent.sinks.write_bigquery", broken)
+    monkeypatch.setattr(sys, "argv", ["agent.run", "--sequence", "--fake"])
+    monkeypatch.setattr("agent.config.LOG_PATH", __import__("pathlib").Path(__import__("tempfile").mkdtemp()) / "r.jsonl")
+    with pytest.raises(RuntimeError, match="BigQuery down"):
+        run_mod.main()
+    assert saved == []                              # alerts not stored -> events not marked as seen
+
+
+def test_bigquery_store_empties_with_truncate_not_an_empty_load():
+    queries = []
+
+    class Client:
+        def query(self, sql):
+            queries.append(sql)
+            return type("J", (), {"result": lambda self: None})()
+
+        def load_table_from_json(self, *a, **k):
+            raise AssertionError("no empty load jobs")
+
+    events.BigQueryStore("p.d.events", Client()).save([])
+    assert queries == ["TRUNCATE TABLE `p.d.events`"]

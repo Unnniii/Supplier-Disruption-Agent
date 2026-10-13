@@ -202,16 +202,19 @@ def main() -> None:
     else:
         news = load_news(args.news)
     results = scan(news, args.fake, progress=True, run_id=run_id, memory=memory)
+    if os.getenv("SDA_BQ_TABLE"):
+        from agent.sinks import write_bigquery
+        n = write_bigquery(results)  # raises on failure, so a cloud job shows as failed
+        print(f"Wrote {n} rows to BigQuery table {os.getenv('SDA_BQ_TABLE')}")
+    # Memory is saved only after the alerts are stored: if storing them failed,
+    # the exception above stops the run here, so tomorrow these events are
+    # still "new" and alert again rather than being silently marked as seen.
     if memory is not None:
         dates = [n.get("event_date", "") for n in news if n.get("event_date")]
         closed = memory.sweep(max(dates) if dates else None)
         memory.save()
         print(f"Event memory: {len(memory.open_events())} open, {len(closed)} closed this run"
               + (f" ({', '.join(closed)})" if closed else "") + ".")
-    if os.getenv("SDA_BQ_TABLE"):
-        from agent.sinks import write_bigquery
-        n = write_bigquery(results)  # raises on failure, so a cloud job shows as failed
-        print(f"Wrote {n} rows to BigQuery table {os.getenv('SDA_BQ_TABLE')}")
     print("\n===== Alerts =====")
     print_alerts(results)
     if args.live:

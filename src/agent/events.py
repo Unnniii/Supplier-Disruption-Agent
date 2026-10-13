@@ -4,7 +4,7 @@ Five articles about one port strike are one event. Without memory the system
 alerts five times, every day, for as long as the strike runs. With memory:
 
     new        first time this event is seen          -> full analysis, alert
-    escalated  known event, more suppliers or worse  -> full analysis, alert
+    escalated  known event, and something material changed -> full analysis, alert
     ongoing    known event, nothing new              -> stop early, no alert
     resolved   not seen for WINDOW_DAYS              -> closed; a later report is new again
 
@@ -12,13 +12,22 @@ The LLM extracts what happened and where (the Scanner) and which suppliers are
 exposed (the Mapper, through ERP tools). Whether two reports are the same event
 is decided here, in plain code, so it is repeatable and testable:
 
-    same event if seen within WINDOW_DAYS and
-      (exposed suppliers overlap a lot  (Jaccard >= SUPPLIER_OVERLAP)
-       or same event type and a shared place, route, port or country)
+    same event if seen within WINDOW_DAYS and either
+      strong: exposed suppliers overlap a lot (Jaccard >= SUPPLIER_OVERLAP), or
+      weak:   a shared place/route/port/country AND (same hazard family OR a shared supplier)
 
-Supplier overlap is the stronger signal: "Houthi attacks in the Red Sea"
-(conflict) and "shippers worried about Suez transits" (route_blocked) have
-different types but hit the same 15 suppliers, so they are one situation.
+    escalated (alert again) if
+      a supplier is exposed that was not before   (from the ERP tools: deterministic), or
+      severity jumps two levels (low -> high)     (one-level wobble is LLM noise), or
+      the hazard family is new for this event     (a flood after a fire at the same plant;
+                                                   "flood" vs "severe_weather" is one family: noise)
+    otherwise ongoing (no alert)
+
+Why not trust the LLM's labels more: the same flood can be called "flood" one
+day and "severe_weather" the next, and "medium" then "high". Supplier exposure
+comes from the ERP, so it is the signal the decision leans on. "Houthi attacks"
+(conflict) and "shippers worried about Suez transits" (route_blocked) differ in
+type but expose the same 15 suppliers, so they are one situation.
 
 Storage: a JSON file on a laptop, a BigQuery table in the cloud (the container's
 disk is wiped after every run). The whole state is loaded at the start of a run
@@ -40,8 +49,23 @@ from agent import config
 WINDOW_DAYS = 14          # an event not reported for this long is over
 SUPPLIER_OVERLAP = 0.6    # Jaccard similarity of exposed suppliers that means "same situation"
 KEEP_RESOLVED_DAYS = 90   # resolved events are kept this long, then dropped
-SEVERITY_RANK = {None: 0, "low": 1, "medium": 2, "high": 3}
+SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3}
+SEVERITY_JUMP = 2         # levels; medium -> high alone is treated as noise
 LOCAL_PATH = config.ROOT / "data" / "events.json"
+
+# Labels a model uses interchangeably for one kind of hazard. A change of label
+# inside a family is noise ("flood" -> "severe_weather"); a change across
+# families is a new hazard ("fire" -> "flood" at the same plant) and escalates.
+HAZARD_FAMILY = {
+    "route_blocked": "shipping", "conflict": "shipping", "port_closure": "port", "port_strike": "port",
+    "flood": "weather", "severe_weather": "weather", "typhoon": "weather", "hurricane": "weather",
+    "heatwave": "weather", "fire": "fire", "explosion": "fire", "earthquake": "earthquake",
+    "export_control": "trade", "lockdown": "lockdown", "cyberattack": "cyber",
+}
+
+
+def family(event_type: str | None) -> str | None:
+    return HAZARD_FAMILY.get(event_type, event_type) if event_type else None
 
 
 @dataclass
@@ -58,6 +82,7 @@ class Event:
     status: str = "open"       # open | resolved
     news_ids: list[str] = field(default_factory=list)
     updated_at: str = ""
+    event_types: list[str] = field(default_factory=list)   # every type reports of it were given
 
 
 def _day(value: str | None) -> date:
@@ -84,27 +109,40 @@ def jaccard(a: set, b: set) -> float:
 def decide(events: list[Event], scan: dict, supplier_ids: list[str], event_date: str) -> dict[str, Any]:
     """Pure function: which event is this report, and what changed? Mutates nothing."""
     today, sups, locs = _day(event_date), set(supplier_ids), set(locations_of(scan))
+    etype, efam = scan.get("event_type"), family(scan.get("event_type"))
     best, best_score, why = None, -1.0, ""
     for ev in events:
         if ev.status != "open" or abs((today - _day(ev.last_seen)).days) > WINDOW_DAYS:
             continue
+        known = {family(t) for t in (ev.event_types or [ev.event_type])}
         overlap = jaccard(sups, set(ev.supplier_ids))
-        same_place = ev.event_type == scan.get("event_type") and bool(locs & set(ev.locations))
-        if overlap >= SUPPLIER_OVERLAP or same_place:
-            score = overlap + (0.5 if same_place else 0)
-            if score > best_score:
-                best, best_score = ev, score
-                why = (f"{overlap:.0%} of exposed suppliers shared" if overlap >= SUPPLIER_OVERLAP
-                       else f"same {ev.event_type} at {', '.join(sorted(locs & set(ev.locations)))}")
+        shared = locs & set(ev.locations)
+        strong = overlap >= SUPPLIER_OVERLAP
+        weak = bool(shared) and (efam in known or bool(sups & set(ev.supplier_ids)))
+        if not (strong or weak):
+            continue
+        score = overlap + (0.5 if shared else 0) + (0.25 if efam in known else 0)
+        if score > best_score:
+            best, best_score = ev, score
+            why = (f"{overlap:.0%} of exposed suppliers shared" if strong
+                   else f"same place ({', '.join(sorted(shared))})")
     if best is None:
-        digest = hashlib.sha1(f"{scan.get('event_type')}|{'|'.join(sorted(locs))}|{event_date}".encode()).hexdigest()[:6]
+        digest = hashlib.sha1(f"{etype}|{'|'.join(sorted(locs))}|{event_date}".encode()).hexdigest()[:6]
         return {"event_id": f"EV-{today:%Y%m%d}-{digest}", "event_status": "new", "new_suppliers": sorted(sups),
                 "matched_on": None}
     added = sorted(sups - set(best.supplier_ids))
-    worse = SEVERITY_RANK.get(scan.get("severity"), 0) > SEVERITY_RANK.get(best.max_severity, 0)
-    status = "escalated" if added or worse else "ongoing"
-    reason = why + (f"; new suppliers {', '.join(added)}" if added else "") + ("; severity up" if worse else "")
-    return {"event_id": best.event_id, "event_status": status, "new_suppliers": added, "matched_on": reason}
+    now, before = SEVERITY_RANK.get(scan.get("severity")), SEVERITY_RANK.get(best.max_severity)
+    worse = now is not None and before is not None and now - before >= SEVERITY_JUMP
+    new_type = efam is not None and efam not in {family(t) for t in (best.event_types or [best.event_type])}
+    reasons = [why]
+    if added:
+        reasons.append(f"new suppliers {', '.join(added)}")
+    if worse:
+        reasons.append(f"severity {best.max_severity} -> {scan.get('severity')}")
+    if new_type:
+        reasons.append(f"now also {etype}")
+    status = "escalated" if added or worse or new_type else "ongoing"
+    return {"event_id": best.event_id, "event_status": status, "new_suppliers": added, "matched_on": "; ".join(reasons)}
 
 
 # --- storage --------------------------------------------------------------------
@@ -159,6 +197,9 @@ class BigQueryStore:
 
     def save(self, rows: list[dict]) -> None:
         from google.cloud import bigquery
+        if not rows:  # a load job with no data is not a reliable way to empty a table
+            self.client.query(f"TRUNCATE TABLE `{self.table}`").result()
+            return
         job = self.client.load_table_from_json(rows, self.table, job_config=bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
             source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON))
@@ -188,12 +229,15 @@ class EventMemory:
             self.events.append(Event(
                 event_id=decision["event_id"], event_type=scan.get("event_type"), title=news.get("headline", "")[:200],
                 locations=locations_of(scan), supplier_ids=sorted(supplier_ids), max_severity=scan.get("severity"),
-                first_seen=day, last_seen=day, news_ids=[news["news_id"]], updated_at=now))
+                first_seen=day, last_seen=day, news_ids=[news["news_id"]], updated_at=now,
+                event_types=[scan["event_type"]] if scan.get("event_type") else []))
             return
         ev.supplier_ids = sorted(set(ev.supplier_ids) | set(supplier_ids))
         ev.locations = sorted(set(ev.locations) | set(locations_of(scan)))
         if SEVERITY_RANK.get(scan.get("severity"), 0) > SEVERITY_RANK.get(ev.max_severity, 0):
             ev.max_severity = scan.get("severity")
+        if scan.get("event_type") and scan["event_type"] not in ev.event_types:
+            ev.event_types = sorted(set(ev.event_types) | {scan["event_type"]})
         ev.last_seen = max(ev.last_seen, day)
         ev.headline_count += 1
         ev.news_ids = (ev.news_ids + [news["news_id"]])[-20:]

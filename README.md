@@ -11,7 +11,7 @@ It runs against the ERP of **Northgate Motors**, a fictional car maker with two 
 
 ![Architecture: news in, four AI agents orchestrated by LangGraph, plain-code tools and data, a code verifier, alerts and logs, scored against a hand-written answer key](docs/architecture.png)
 
-> Status: two full scored runs on Gemini (results below), event memory across runs, 96 tests, CI on every push, and a daily scan deployable to GCP's free tier with one command (Terraform, Cloud Run Job, Cloud Scheduler, BigQuery). Every bug found along the way is logged in [docs/corrections.md](docs/corrections.md).
+> Status: two full scored runs on Gemini (results below), event memory across runs, 102 tests, CI on every push, and a daily scan deployable to GCP's free tier with one command (Terraform, Cloud Run Job, Cloud Scheduler, BigQuery). Every bug found along the way is logged in [docs/corrections.md](docs/corrections.md).
 
 ## The agents
 
@@ -57,9 +57,19 @@ Without memory, five articles about one port strike are five alerts, every day t
 | **ongoing** | known event, nothing new | stops after the Mapper: no Impact, Advisor or Verifier calls, no alert |
 | **resolved** | not reported for 14 days | closed; a later report starts a new event |
 
-**Who decides what.** The LLM agents extract *what* happened and *where*, and the ERP tools say *which suppliers* are exposed. Whether two reports are the same event is decided in plain code, so it is repeatable and testable. Two reports are one event if they are within 14 days and either (a) their exposed suppliers overlap by at least 60% (Jaccard), or (b) they have the same event type and share a place, route, port or country. Overlap is the stronger signal: "Houthi attacks" (conflict) and "shippers worried about Suez transits" (route_blocked) have different types but hit the same 15 suppliers. Route aliases are normalised first, so "Red Sea" is the Suez lane.
+**Who decides what.** The LLM agents extract *what* happened and *where*, and the ERP tools say *which suppliers* are exposed. Whether two reports are the same event is decided in plain code, so it is repeatable and testable.
+- **Same event** if within 14 days and either:
+  - exposed suppliers overlap by at least 60% (Jaccard), or
+  - they share a place, route, port or country *and* either the same hazard family or a shared supplier.
+- **Escalated** (alert again) if:
+  - a supplier is exposed that was not before, or
+  - severity jumps two levels (low → high), or
+  - a new hazard family appears (a flood after a fire at the same plant).
+- **Otherwise ongoing:** no alert.
 
-**Commit after success.** A decision is written to memory only once its headline has been fully handled. If the run crashes halfway, the event is not marked as seen, so a crash can never swallow an alert that was never sent.
+**Why the rules lean on suppliers, not labels.** A model calls the same flood "flood" one day and "severe_weather" the next, and "medium" then "high". So label changes *within* a hazard family (shipping, weather, fire and so on) are treated as noise, and a one-level severity change is ignored. Supplier exposure comes from the ERP, so it is the stable signal. A test reruns the whole sequence with labels flipping and severity wobbling the way a real model's do; the decisions do not change.
+
+**Commit after success.** A decision enters memory only once its headline is fully handled, and memory is saved only *after* the alerts are stored in BigQuery. If storing the alerts fails, the job fails and the events stay unseen, so they alert again next run. A test forces that failure and checks that nothing is saved.
 
 **Storage.** On a laptop: `data/events.json`. In the cloud: a BigQuery `events` table. It is read once at the start of a run (free table read) and rewritten once at the end (free load job), because the container's disk is wiped after every run. One scan runs at a time, so there is no locking.
 

@@ -70,5 +70,11 @@
     "type": "TIMESTAMP",
     "mode": "NULLABLE",
     "description": "Last change (UTC)"
+  },
+  {
+    "name": "event_types",
+    "type": "STRING",
+    "mode": "REPEATED",
+    "description": "Every type reports of this event were given (LLM labels vary)"
   }
 ]
