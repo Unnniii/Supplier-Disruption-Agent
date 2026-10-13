@@ -193,7 +193,17 @@ uv run python -m agent.run --live                 # last 24 hours, up to 15 head
 uv run python -m agent.run --live --max-live 30
 ```
 
-One request to GDELT per run; headlines are de-duplicated, capped and saved to `data/live/` so every alert can be traced to what was read. GDELT returns titles, not article text, so the Scanner judges from the headline. Most days nothing touches 41 fictional suppliers, so "no exposure" is the normal answer.
+Three free sources, tried in order:
+1. GDELT, a global news index searched with disruption keywords.
+2. Publisher RSS feeds (BBC World and Business, Supply Chain Dive, FreightWaves, The Loadstar, gCaptain), filtered to recent, disruption-sounding headlines.
+3. Google News RSS.
+
+A source that refuses, or answers with nothing, hands over to the next. From Cloud Run, GDELT (429) and Google News (503) both turn away data-centre traffic, so the cloud scan normally runs on the publisher feeds. Each headline records which source it came from. Headlines are de-duplicated, capped and saved to `data/live/`, so every alert can be traced back to what was read. All three give titles, not article text, so the Scanner judges from the headline. Most days nothing touches 41 fictional suppliers, so "no exposure" is the normal answer.
+
+```bash
+uv run python -m agent.live                                      # just fetch and print, no model calls
+$env:SDA_LIVE_SOURCE="feeds"; uv run python -m agent.live        # force one source (PowerShell)
+```
 
 **Daily on Windows:** `scripts/run_daily.ps1` runs the live scan and appends to `logs/daily.log`. Register it with Task Scheduler using the command at the top of that file.
 
@@ -204,7 +214,7 @@ Cloud Scheduler (06:47 London, daily)
         |  POST .../jobs/sda-daily-scan:run   (as sda-scheduler, run.invoker only)
         v
 Cloud Run Job  sda-daily-scan   (container from Artifact Registry, runs as sda-job)
-        |  GDELT -> Scanner -> Mapper -> Impact -> Advisor -> Verifier
+        |  news (GDELT -> publisher RSS -> Google News) -> Scanner -> Mapper -> Event memory -> Impact -> Advisor -> Verifier
         |  Gemini key from Secret Manager
         v
 BigQuery  supplier_disruption.runs   one row per headline, partitioned by day
@@ -267,17 +277,21 @@ bq query --use_legacy_sql=false "SELECT * FROM supplier_disruption.alerts LIMIT 
 ```bash
 uv sync
 uv run python scripts/seed_erp.py
-uv run pytest                                   # 61 tests, offline, free
+uv run pytest                                   # 103 tests, offline, free
 uv run python -m agent.run --fake               # whole pipeline with a rule-based stand-in model
 cp .env.example .env                            # add GEMINI_API_KEY (free, aistudio.google.com/apikey)
 uv run python -m agent.run --news N01 N07       # try two headlines first
 uv run python -m agent.run                      # full scan, Gemini free tier
 SDA_PROVIDER=ollama uv run python -m agent.run  # local model instead (install Ollama, `ollama pull qwen3:8b`)
+uv run python -m agent.evaluate                 # score the latest run
+uv run python -m agent.run --sequence           # event-memory test (10 ordered headlines), then evaluate again
+uv run python -m agent.run --live               # today's real headlines, with event memory
+uv run python -m agent.run --resume             # finish a run the daily quota cut short
 ```
 
 Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise Chroma's local embedding model, otherwise keyword (BM25) search, and prints which one it fell back to.
 
-**What the tests cover:** the evaluation maths, live news parsing and fallback, the new country and route-alias tools, that adding suppliers left old data unchanged, the cap, the Gemini and Ollama adapters (with stand-in clients, no network), data integrity, the Map step reaching the answer key, routing and early exits, the tool loop's turn limit and unknown-tool handling, the verifier's checks, the advisor revise loop, and failure isolation.
+**What the tests cover:** the evaluation maths, live news parsing and fallback, the new country and route-alias tools, that adding suppliers left old data unchanged, the cap, the Gemini and Ollama adapters (with stand-in clients, no network), data integrity, the Map step reaching the answer key, routing and early exits, the tool loop's turn limit and unknown-tool handling, the verifier's checks, the advisor revise loop, failure isolation, event memory (matching rules, label noise, save order, BigQuery store), the BigQuery writer and schemas, and UTF-8 file handling for Windows.
 
 **`--fake` mode is a floor, not a result.** It is keyword matching that never reads the answer key. It exists so the pipeline can be tested without cost. Real accuracy numbers come from the evaluation on Gemini.
 
@@ -289,7 +303,7 @@ Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise C
 - Event matching uses fixed thresholds (14 days, 60% overlap) chosen by hand, not tuned on data.
 - Coverage (full / partial / none) is judged by the model on every headline, so the same contract can get different answers on different days (S002 and S027 in the results above).
 - The Ollama path is tested with stand-ins only. The Gemini path has two full scored runs.
-- Live mode is tested against recorded GDELT replies, not the live service (the build sandbox cannot reach it). GDELT's language filter syntax is not confirmed in its public docs, so live mode retries without it if the first query is rejected.
+- Live sources are unit-tested against recorded replies; the real feeds are only exercised by the daily cloud run and manual laptop runs. If a publisher changes its RSS address, that source fails quietly and the next one is used. The logs show it, but nothing alerts on it.
 - The answer key was written by the same person who built the system. An independent second annotator would make the scores more trustworthy.
 - Gemini model names change; if `gemini-3.1-flash-lite` returns 404, set `SDA_MODEL` to the current Flash-Lite name shown in AI Studio.
 
@@ -300,7 +314,7 @@ Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise C
 - [x] Free model backends (Gemini free tier, Ollama) and a per-run call cap
 - [x] Evaluation script: precision, recall, backup accuracy, retrieval hit rate, cost
 - [x] 11 more suppliers and 14 more headlines from real 2023 to 2025 disruptions
-- [x] Live mode (GDELT) and a daily Windows schedule
+- [x] Live mode (GDELT, publisher RSS, Google News, with fallback) and a daily Windows schedule
 - [x] Full scored run on Gemini; results in this README
 - [x] Fix the worst miss and re-run (before/after numbers): unsafe backups warned 0 of 13 → 13 of 13
 - [x] Event memory: new / escalated / ongoing / resolved, stored in BigQuery, 10/10 on Gemini on a scored sequence
