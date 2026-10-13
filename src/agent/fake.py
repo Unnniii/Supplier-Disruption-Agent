@@ -1,4 +1,4 @@
-"""A rule-based stand-in for Claude, so the whole multi-agent graph runs offline,
+"""A rule-based stand-in for a real model (Gemini, Ollama or Claude), so the whole multi-agent graph runs offline,
 for free, in tests and in `--fake` mode.
 
 It is deliberately naive (keyword matching) and it never reads the answer key.

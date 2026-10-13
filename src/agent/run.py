@@ -4,7 +4,7 @@
     uv run python -m agent.run                    # Gemini free tier (needs GEMINI_API_KEY)
     SDA_PROVIDER=ollama uv run python -m agent.run   # local model, free, offline
     uv run python -m agent.run --news N01 N07     # only some headlines
-    uv run python -m agent.run --live             # today's real headlines from GDELT (not scored)
+    uv run python -m agent.run --live             # today's real headlines (GDELT, RSS, Google News); not scored
     uv run python -m agent.run --resume           # finish the latest run: redo only errored/missing headlines
     uv run python -m agent.run --sequence --fake  # scored event-memory test: repeats, escalations, a gap
 
@@ -168,7 +168,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--fake", action="store_true", help="offline rule-based model, no API key, no cost")
     ap.add_argument("--news", nargs="*", help="news ids to run (default: all)")
-    ap.add_argument("--live", action="store_true", help="read the last 24h of real headlines from GDELT instead")
+    ap.add_argument("--live", action="store_true", help="read the last 24h of real headlines (GDELT, publisher RSS, Google News) instead")
     ap.add_argument("--max-live", type=int, default=15, help="cap on live headlines per run (protects the free quota)")
     ap.add_argument("--resume", nargs="?", const="latest", metavar="RUN_ID",
                     help="redo only the errored or missing headlines of the latest (or given) run")

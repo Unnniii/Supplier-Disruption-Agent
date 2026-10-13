@@ -11,10 +11,11 @@ This project is a team of robot helpers that read the news every morning and sho
 1. **The newspaper arrives.** Either 34 old stories we already know the answers to (a fire at a chip factory, the Red Sea attacks, a football match), or today's real headlines from the internet.
 2. **Robot 1, the Scanner, reads each story.** It asks: "Is this something that could stop a factory or a ship?" If no, it stops there.
 3. **Robot 2, the Mapper, looks at the map.** It asks: "Which of our shops are close to the trouble, or use that canal or port?"
-4. **Robot 3, the Impact checker, opens the cupboard.** It asks: "How many days of parts do we have left from that shop?"
-5. **Robot 4, the Contract advisor, reads the agreements.** It asks: "Does our contract name a backup shop? How fast can we switch?"
-6. **The Verifier (not a robot, just a strict rule-checker)** asks: "Did Robot 4 only say things the contract really says?" If not, Robot 4 tries once more.
-7. **The alert comes out.** For example: "Fire near Hitachinaka. Chip shop S001 hit. 6 days of chips left. Backup shop S011 can help in 6 weeks."
+4. **The memory (not a robot, just a notebook) checks:** "Did we already warn about this exact trouble?" If yes and nothing got worse, it stays quiet and stops here.
+5. **Robot 3, the Impact checker, opens the cupboard.** It asks: "How many days of parts do we have left from that shop?"
+6. **Robot 4, the Contract advisor, reads the agreements.** It asks: "Does our contract name a backup shop? How fast can we switch?"
+7. **The Verifier (not a robot, just a strict rule-checker)** asks: "Did Robot 4 only say things the contract really says?" If not, Robot 4 tries once more.
+8. **The alert comes out.** For example: "Fire near Hitachinaka. Chip shop S001 hit. 6 days of chips left. Backup shop S011 can help in 6 weeks."
 
 ## The 3 big ideas (the words interviewers use)
 
@@ -23,6 +24,7 @@ This project is a team of robot helpers that read the news every morning and sho
 | **Agents** | Robots that each have one job and their own tools | Scanner, Mapper, Impact checker, Contract advisor |
 | **Orchestration** | The boss who decides which robot goes next | LangGraph, in `graph.py` |
 | **RAG** | Before answering, look up the right page in the book first | The Contract advisor searching contracts |
+| **State / memory** | Remembering yesterday, so you do not repeat yourself | `events.py`, stored in BigQuery in the cloud |
 
 ## Two golden rules of this project
 
@@ -83,7 +85,7 @@ This project is a team of robot helpers that read the news every morning and sho
 | File | What it is |
 |---|---|
 | `run.py` | The start button. Reads the news (old or live), runs the robots, prints alerts, saves a log. |
-| `live.py` | Fetches today's headlines from GDELT, a free news index. One request, max 15 headlines. |
+| `live.py` | Fetches today's headlines, max 15. Tries GDELT first, then news sites' own RSS feeds, then Google News, because some of them refuse to talk to cloud computers. |
 | `evaluate.py` | The marker. Compares a run with the answer key and writes the score card. |
 | `graph.py` | The boss (orchestration). Decides which robot goes next and when to stop early. |
 | `agents.py` | The four robots' instructions, plus the Verifier and the maths double-check. |
@@ -105,8 +107,6 @@ This project is a team of robot helpers that read the news every morning and sho
 | `eval/ground_truth.json` | The right answers, written by hand: which shops each story should flag, and the traps. |
 | `eval/event_sequence.json` | 10 news stories in date order, with the right memory decision for each (new, still going, getting worse). Tests the memory. |
 | `eval/rag_questions.json` | 14 questions about contracts, with the contract that should be found. Tests the RAG. |
-| `eval/results.md` | The latest score card, written by `evaluate.py`. |
-| `eval/history.jsonl` | Every score card ever, one line each, so you can show "before and after". |
 
 ### `tests/`: the safety checks
 
@@ -116,7 +116,7 @@ This project is a team of robot helpers that read the news every morning and sho
 | `tests/test_agents_graph.py` | Checks the boss sends robots in the right order, handles mistakes, reads live news safely and scores correctly. |
 | `tests/test_llm_adapters.py` | Checks the phone lines to Gemini and Ollama, the cap, and the fixes from the first real run. |
 | `tests/test_events.py` | Checks the memory rules: same story is matched, different story is not, a bigger flood counts as worse, old stories expire. |
-| `tests/test_cloud.py` | Checks the BigQuery writer, that its columns match the table, and that the deploy files exist. |
+| `tests/test_cloud.py` | Checks the BigQuery writer, that its columns match the table, that the deploy files exist, and that every file is saved in UTF-8 so Windows does not crash. |
 | `tests/conftest.py` | Setup for tests: build the database if missing, never use the internet. |
 | `tests/__init__.py` | Empty file so tests can share helpers. |
 
@@ -133,6 +133,9 @@ This project is a team of robot helpers that read the news every morning and sho
 | File | What it is |
 |---|---|
 | `logs/runs.jsonl` | One line per news story per run: what each robot decided, how long, how many tokens. |
+| `eval/results.md`, `eval/results_events.md` | The latest score cards, written by `evaluate.py`. |
+| `eval/history.jsonl` | Every score card ever, one line each, so you can show "before and after". |
+| `data/events.json` | The laptop's memory of events (the cloud keeps its own in BigQuery). |
 | `.venv/` | The box where `uv` installs Python and the libraries. |
 
 ---
@@ -163,4 +166,4 @@ Cloud Scheduler (alarm clock, 06:47)
 
 ## Say it in an interview (30 seconds)
 
-"I built a multi-agent system that reads supply chain news, finds which suppliers are hit, checks days of stock in an ERP, and pulls the backup plan from supplier contracts using RAG. LangGraph orchestrates four agents, each with only its own tools. The maths is plain code, not AI, and a verifier rejects any claim the contracts do not support. I score it against a hand-written answer key built from 21 real disruptions, from the Suez blockage to China's rare earth export licences, and it also runs daily on live news. It runs for £0 on Gemini's free tier with a hard cap on calls."
+"I built a multi-agent system that reads supply chain news, finds which suppliers are hit, checks days of stock in an ERP, and pulls the backup plan from supplier contracts using RAG. LangGraph orchestrates four agents, each with only its own tools; the maths and the checks are plain code, not AI. I scored it against a hand-written answer key of 34 headlines: 34 out of 34, yet reading the output showed it recommending backups hit by the same disaster, so I added a check that now catches all 13. It runs every morning on Google Cloud (Cloud Run, BigQuery, all in Terraform) for £0, and it remembers events across days, so the same story in five papers is one alert, not five."

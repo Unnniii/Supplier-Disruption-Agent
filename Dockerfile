@@ -1,5 +1,5 @@
-# Cloud image for the daily live scan (Cloud Run Job). Built by Cloud Build:
-#   gcloud builds submit --tag <region>-docker.pkg.dev/<project>/sda/agent:latest
+# Cloud image for the daily live scan (Cloud Run Job). Built by Cloud Build
+# (cloudbuild.yaml), started by scripts/deploy_gcp.ps1.
 # Kept small on purpose: the Artifact Registry free tier is 0.5 GB.
 FROM python:3.12-slim
 

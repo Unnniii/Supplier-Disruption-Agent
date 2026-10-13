@@ -35,7 +35,8 @@ MAX_REVISIONS = 1        # verifier can send the advisor back once
 # --- The cap -----------------------------------------------------------------
 # Hard ceiling on model calls in one run. A loop bug or a bad prompt cannot burn
 # through a free-tier quota (or money) because the run stops at this number.
-# A real 3-headline run made ~25 calls; the full 33-headline scan needs ~150-250.
+# On Gemini, the full 34-headline scan needs about 200 calls; the event
+# sequence about 70; the cloud job is capped at 150 (infra/variables.tf).
 MAX_LLM_CALLS_PER_RUN = int(os.getenv("SDA_MAX_LLM_CALLS", "300"))
 # Free tiers rate-limit per minute; wait and retry this many times on HTTP 429.
 RATE_LIMIT_RETRIES = 4

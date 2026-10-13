@@ -11,10 +11,11 @@
 #   .\scripts\deploy_gcp.ps1 -ProjectId my-project-id -BillingAccount XXXXXX-XXXXXX-XXXXXX
 #
 # What it does:
+#   0. Checks billing is linked and switches on the APIs Terraform needs first
 #   1. Terraform creates the APIs, image registry, empty secret and build identity
 #   2. Adds your Gemini key (from .env) to Secret Manager, if not there yet
 #   3. Cloud Build builds the container image
-#   4. Terraform creates the job, schedule, BigQuery tables and budget alert
+#   4. Terraform creates the job, schedule, BigQuery tables (runs, events) and budget alert
 #   5. Runs the job once and shows what landed in BigQuery
 
 param(

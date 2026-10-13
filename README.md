@@ -53,7 +53,7 @@ Without memory, five articles about one port strike are five alerts, every day t
 | Decision | When | What happens |
 |---|---|---|
 | **new** | no open event matches | full analysis, alert |
-| **escalated** | known event, but a new supplier is exposed or severity went up | full analysis, alert, says what changed |
+| **escalated** | known event, but a new supplier is exposed, severity jumped two levels, or a new kind of hazard appeared | full analysis, alert, says what changed |
 | **ongoing** | known event, nothing new | stops after the Mapper: no Impact, Advisor or Verifier calls, no alert |
 | **resolved** | not reported for 14 days | closed; a later report starts a new event |
 
@@ -153,7 +153,7 @@ uv run python -m agent.run            # full replay, 34 headlines
 uv run python -m agent.evaluate       # score it
 ```
 
-`agent.evaluate` scores the latest run and writes `eval/results.md`, and appends one line to `eval/history.jsonl` so before/after comparisons are a diff, not a memory.
+`agent.evaluate` scores the latest run and writes `eval/results.md` (or `eval/results_events.md` for the event sequence), and appends one line to `eval/history.jsonl`, so before/after comparisons are a diff, not a memory. These files stay on your machine; the numbers that matter are copied into this README.
 
 | Check | How it is scored |
 |---|---|
@@ -205,7 +205,9 @@ uv run python -m agent.live                                      # just fetch an
 $env:SDA_LIVE_SOURCE="feeds"; uv run python -m agent.live        # force one source (PowerShell)
 ```
 
-**Daily on Windows:** `scripts/run_daily.ps1` runs the live scan and appends to `logs/daily.log`. Register it with Task Scheduler using the command at the top of that file.
+On a laptop, live runs keep their event memory in `data/events.json`; the cloud keeps its own in BigQuery. The two memories are separate.
+
+**Daily on Windows (alternative to the cloud):** `scripts/run_daily.ps1` runs the live scan and appends to `logs/daily.log`. Register it with Task Scheduler using the command at the top of that file. Use this *or* the cloud scan, not both: they share one Gemini daily quota.
 
 ## Cloud: daily scan on GCP (free tier)
 
@@ -224,7 +226,7 @@ BigQuery  supplier_disruption.runs   one row per headline, partitioned by day
 
 Everything is in Terraform (`infra/`). The image is built by Cloud Build (`cloudbuild.yaml`). `scripts/deploy_gcp.ps1` does the whole deployment in one command.
 
-**First live cloud run** (12 October 2026, 15 real headlines from publisher feeds; GDELT and Google News refused Cloud Run's IPs): 7 judged disruptions, 2 alerts, 0 errors, 81,094 tokens, $0. Both alerts are debatable. "Shippers stressing over risks from Suez Canal and Red Sea transits" flagged all 15 Suez-route suppliers, but it describes an ongoing risk, not a new event. A Mexican trucker shortage was labelled an export control. Traps were handled: "BD strikes supply chain pact" was rejected, and Hormuz tanker attacks were judged real but with no supplier exposed. The answer key has no "risk commentary versus actual event" cases. This run is why event memory exists (see below): a repeat of a known situation is no longer re-alerted.
+**First live cloud run** (12 October 2026, 15 real headlines from publisher feeds; GDELT and Google News refused Cloud Run's IPs): 7 judged disruptions, 2 alerts, 0 errors, 81,094 tokens, $0. Both alerts are debatable. "Shippers stressing over risks from Suez Canal and Red Sea transits" flagged all 15 Suez-route suppliers, but it describes an ongoing risk, not a new event. A Mexican trucker shortage was labelled an export control. Traps were handled: "BD strikes supply chain pact" was rejected, and Hormuz tanker attacks were judged real but with no supplier exposed. The answer key has no "risk commentary versus actual event" cases. This run is why event memory exists (see [Event memory](#event-memory-alert-on-what-changed-not-on-every-headline) above): a repeat of a known situation is no longer re-alerted.
 
 **Design choices**
 - **A Job, not a Service.** A scan is a batch: it starts, runs for a few minutes and exits. Nothing sits idle and nothing is publicly reachable.
@@ -257,7 +259,7 @@ winget install Google.CloudSDK
 winget install Hashicorp.Terraform
 # close and reopen PowerShell
 gcloud auth login
-gcloud auth application-default login
+gcloud auth application-default login     # optional: if it fails, the script uses your gcloud login
 .\scripts\deploy_gcp.ps1 -ProjectId <your-project-id> -BillingAccount <XXXXXX-XXXXXX-XXXXXX>
 ```
 
@@ -298,11 +300,11 @@ Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise C
 ## Known gaps (honest list)
 
 - The verifier checks that a cited clause names the backup, not that the backup is in the right direction. For example, Taichung's contract names Hitachinaka because Taichung is Hitachinaka's backup. A model could misread that as "Hitachinaka is Taichung's backup" and pass the check.
-- When the Scanner names both a country and a city, a wide radius (war: 600 km) from the city can catch suppliers in neighbouring countries. The evaluation will show how often this happens.
+- When the Scanner names both a country and a city, a wide radius (war: 600 km) from the city can catch suppliers in neighbouring countries. It did not happen in the 34-headline evaluation (0 false alarms), but nothing beyond those cases tests it.
 - Event memory stops *repeat* alerts, but the first article about a long-running risk still alerts once. Telling "risk commentary" apart from "new event" on first sight is not solved.
 - Event matching uses fixed thresholds (14 days, 60% overlap) chosen by hand, not tuned on data.
 - Coverage (full / partial / none) is judged by the model on every headline, so the same contract can get different answers on different days (S002 and S027 in the results above).
-- The Ollama path is tested with stand-ins only. The Gemini path has two full scored runs.
+- The Ollama path is tested with stand-ins only. The Gemini path has two full scored runs and two event-sequence runs.
 - Live sources are unit-tested against recorded replies; the real feeds are only exercised by the daily cloud run and manual laptop runs. If a publisher changes its RSS address, that source fails quietly and the next one is used. The logs show it, but nothing alerts on it.
 - The answer key was written by the same person who built the system. An independent second annotator would make the scores more trustworthy.
 - Gemini model names change; if `gemini-3.1-flash-lite` returns 404, set `SDA_MODEL` to the current Flash-Lite name shown in AI Studio.

@@ -1,8 +1,8 @@
 # Supplier Disruption Agent on GCP, designed to stay inside the free tier.
 #
-#   Cloud Scheduler (daily) --> Cloud Run Job (container: live scan) --> BigQuery (one row per headline)
-#                                   |                                          |
-#                          Secret Manager (Gemini key)            views: alerts, daily_summary
+#   Cloud Scheduler (daily) --> Cloud Run Job (container: live scan) --> BigQuery runs (one row per headline)
+#                                   |                                   BigQuery events (event memory)
+#                          Secret Manager (Gemini key)                  views: alerts, daily_summary
 #
 # The Gemini key is NOT in this file or in Terraform state: Terraform creates an
 # empty secret and the deploy script adds the key as a secret version.

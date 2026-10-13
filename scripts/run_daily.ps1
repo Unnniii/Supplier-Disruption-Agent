@@ -4,6 +4,8 @@
 #     /TR "powershell -ExecutionPolicy Bypass -File C:\path\to\supplier-disruption-agent\scripts\run_daily.ps1"
 # Remove:   schtasks /Delete /TN "SupplierDisruptionAgent" /F
 # The laptop must be on (or set the task to run when available).
+# Use this OR the cloud scan (scripts/deploy_gcp.ps1), not both: they share one
+# Gemini daily quota, and each keeps its own event memory (data/events.json here).
 
 Set-Location (Join-Path $PSScriptRoot "..")
 New-Item -ItemType Directory -Force -Path logs | Out-Null
