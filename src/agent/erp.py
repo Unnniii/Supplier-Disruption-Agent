@@ -49,7 +49,7 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def geocode(place: str) -> tuple[float, float] | None:
-    places = json.loads(GAZETTEER_PATH.read_text())["places"]
+    places = json.loads(GAZETTEER_PATH.read_text(encoding="utf-8"))["places"]
     for name, coords in places.items():
         if name.lower() == place.strip().lower():
             return coords[0], coords[1]
@@ -79,7 +79,7 @@ def all_suppliers() -> list[dict]:
 
 def resolve_route(route: str) -> str:
     """'Red Sea' and 'Bab el-Mandeb' are the same shipping lane as the Suez Canal."""
-    aliases = json.loads(GAZETTEER_PATH.read_text()).get("route_aliases", {})
+    aliases = json.loads(GAZETTEER_PATH.read_text(encoding="utf-8")).get("route_aliases", {})
     for alias, canonical in aliases.items():
         if alias.lower() == route.strip().lower():
             return canonical

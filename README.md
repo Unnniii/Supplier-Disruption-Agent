@@ -11,7 +11,7 @@ It runs against the ERP of **Northgate Motors**, a fictional car maker with two 
 
 ![Architecture: news in, four AI agents orchestrated by LangGraph, plain-code tools and data, a code verifier, alerts and logs, scored against a hand-written answer key](docs/architecture.png)
 
-> Status: two full scored runs on Gemini (results below), event memory across runs, 102 tests, CI on every push, and a daily scan deployable to GCP's free tier with one command (Terraform, Cloud Run Job, Cloud Scheduler, BigQuery). Every bug found along the way is logged in [docs/corrections.md](docs/corrections.md).
+> Status: two full scored runs on Gemini (results below), event memory across runs (10/10 on Gemini), 103 tests, CI on every push, and a daily scan deployable to GCP's free tier with one command (Terraform, Cloud Run Job, Cloud Scheduler, BigQuery). Every bug found along the way is logged in [docs/corrections.md](docs/corrections.md).
 
 ## The agents
 
@@ -88,14 +88,16 @@ uv run python -m agent.run --sequence --fake    # or without --fake for Gemini
 uv run python -m agent.evaluate                 # scores the event decisions
 ```
 
-| | Stand-in model (`--fake`) |
-|---|---|
-| Event decision right | 10 / 10 |
-| Same real event, same event id (pairwise) | 100% |
-| Alerts sent | 6 (without memory: 10) |
-| Model calls | 54 (about 16 saved; a repeat costs 3 calls instead of 7) |
+| | Gemini (`gemini-3.1-flash-lite`) | Stand-in model (`--fake`) |
+|---|---|---|
+| Event decision right | **10 / 10** | 10 / 10 |
+| Alerts sent | **6** (without memory: 10) | 6 (without memory: 10) |
+| Model calls for a repeat (ongoing) | **about 4**, vs about 9 for a new event | 3 vs 7 |
+| Model calls, whole sequence | 71 | 54 |
 
-These are stand-in model numbers; the sequence has not been run on Gemini yet. The matching rules are also covered by unit tests in `tests/test_events.py`.
+On Gemini the Taipei → Taichung escalation matched on *same place* ("taipei, taiwan"), not supplier overlap, which is the path the label-noise fix protects. The insurance-cost article (risk commentary about a known event) was correctly treated as ongoing: no alert.
+
+The matching rules are also covered by unit tests in `tests/test_events.py`.
 
 ## Models and cost: built to run for £0
 
@@ -301,7 +303,7 @@ Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise C
 - [x] Live mode (GDELT) and a daily Windows schedule
 - [x] Full scored run on Gemini; results in this README
 - [x] Fix the worst miss and re-run (before/after numbers): unsafe backups warned 0 of 13 → 13 of 13
-- [x] Event memory: new / escalated / ongoing / resolved, stored in BigQuery, scored on a 10-headline sequence
+- [x] Event memory: new / escalated / ongoing / resolved, stored in BigQuery, 10/10 on Gemini on a scored sequence
 - [ ] Coverage as a structured contract field read by code, not judged by the model
 - [ ] Evaluation as a CI gate: fail the build if precision, recall or event decisions get worse
 - [ ] Parallel advisor per supplier (LangGraph `Send`), and tiered model routing

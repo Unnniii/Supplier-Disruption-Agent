@@ -169,11 +169,11 @@ class JsonStore:
         self.path = path
 
     def load(self) -> list[dict]:
-        return json.loads(self.path.read_text()) if self.path.exists() else []
+        return json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else []
 
     def save(self, rows: list[dict]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(rows, indent=2))
+        self.path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
 
 
 class BigQueryStore:

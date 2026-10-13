@@ -38,7 +38,7 @@ def _slim(rows: list[dict]) -> list[dict]:
 
 
 def _known_places() -> dict:
-    data = json.loads(erp.GAZETTEER_PATH.read_text())
+    data = json.loads(erp.GAZETTEER_PATH.read_text(encoding="utf-8"))
     return {"places": sorted(data["places"]), "routes": data["routes"],
             "route_aliases": data.get("route_aliases", {}), "ports": data["ports"],
             "countries": erp.countries(), "supplier_categories": erp.categories(),

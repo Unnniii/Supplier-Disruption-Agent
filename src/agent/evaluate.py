@@ -41,7 +41,7 @@ HISTORY = config.ROOT / "eval" / "history.jsonl"
 def load_run(run_id: str | None = None) -> list[dict]:
     if not config.LOG_PATH.exists():
         raise SystemExit("No runs yet: run `uv run python -m agent.run` first.")
-    rows = [json.loads(line) for line in config.LOG_PATH.read_text().splitlines() if line.strip()]
+    rows = [json.loads(line) for line in config.LOG_PATH.read_text(encoding="utf-8").splitlines() if line.strip()]
     run_id = run_id or rows[-1]["run_id"]
     picked = [r for r in rows if r["run_id"] == run_id]
     if not picked:
@@ -252,33 +252,33 @@ def main() -> None:
     ap.add_argument("--no-rag", action="store_true", help="skip the contract retrieval check")
     args = ap.parse_args()
 
-    truth = json.loads(TRUTH_PATH.read_text())
+    truth = json.loads(TRUTH_PATH.read_text(encoding="utf-8"))
     records = load_run(args.run_id)
-    sequence = json.loads(SEQUENCE_PATH.read_text())["news"]
+    sequence = json.loads(SEQUENCE_PATH.read_text(encoding="utf-8"))["news"]
     if {r["news_id"] for r in records} <= {n["news_id"] for n in sequence}:
         ev = score_events(records, sequence)
         meta = {"run_id": records[0]["run_id"], "model": records[0].get("model"),
                 "scored_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
         report = render_events(ev, meta)
-        EVENTS_MD.write_text(report)
-        with HISTORY.open("a") as f:
+        EVENTS_MD.write_text(report, encoding="utf-8")
+        with HISTORY.open("a", encoding="utf-8") as f:
             f.write(json.dumps({**meta, "kind": "event_sequence",
                                 **{k: v for k, v in ev.items() if k != "rows"}}) + "\n")
         print(report)
         print(f"Saved {EVENTS_MD.relative_to(config.ROOT)} and appended to {HISTORY.relative_to(config.ROOT)}")
         return
     run = score_run(records, truth)
-    rag = None if args.no_rag else score_retrieval(json.loads(RAG_PATH.read_text()))
+    rag = None if args.no_rag else score_retrieval(json.loads(RAG_PATH.read_text(encoding="utf-8")))
     meta = {"run_id": records[0]["run_id"], "model": records[0].get("model"),
             "prompt_version": records[0].get("prompt_version"),
             "scored_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
 
     report = render(run, rag, meta)
-    RESULTS_MD.write_text(report)
+    RESULTS_MD.write_text(report, encoding="utf-8")
     summary = {**meta, **{k: v for k, v in run.items() if k not in ("per_headline", "misses")}}
     if rag:
         summary.update({f"rag_{k}": v for k, v in rag.items() if k != "misses"})
-    with HISTORY.open("a") as f:
+    with HISTORY.open("a", encoding="utf-8") as f:
         f.write(json.dumps(summary) + "\n")
     print(report)
     print(f"Saved {RESULTS_MD.relative_to(config.ROOT)} and appended to {HISTORY.relative_to(config.ROOT)}")

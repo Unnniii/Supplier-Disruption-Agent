@@ -33,7 +33,7 @@ def load_chunks() -> list[Chunk]:
     chunks = []
     for path in sorted(config.CONTRACTS_DIR.glob("contract_*.txt")):
         supplier_id = path.stem.split("_")[1]
-        paras = [p.strip() for p in path.read_text().split("\n\n") if p.strip()]
+        paras = [p.strip() for p in path.read_text(encoding="utf-8").split("\n\n") if p.strip()]
         header = paras[0].splitlines()[0] if paras else ""
         for i, para in enumerate(paras):
             # carry the agreement title into every chunk so a clause is never orphaned

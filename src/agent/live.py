@@ -187,7 +187,7 @@ def to_news(articles: list[dict], limit: int, source: str = "gdelt") -> list[dic
 def _save(news: list[dict]) -> None:
     LIVE_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M")
-    (LIVE_DIR / f"{stamp}.json").write_text(json.dumps(news, indent=2, ensure_ascii=False))
+    (LIVE_DIR / f"{stamp}.json").write_text(json.dumps(news, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def fetch_live_news(limit: int = 15, get: Callable[[dict], str] | None = None,

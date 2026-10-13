@@ -72,7 +72,7 @@ class FakeLLM:
         if event is None or any(re.search(rf"\b{re.escape(w)}\b", text) for w in NOT_DISRUPTION):
             return {"is_disruption": False, "event_type": event, "reason": "no disruption keywords"}
         from agent.erp import GAZETTEER_PATH
-        gaz = json.loads(GAZETTEER_PATH.read_text())
+        gaz = json.loads(GAZETTEER_PATH.read_text(encoding="utf-8"))
         places = [pl for pl in sorted(gaz["places"], key=len, reverse=True) if pl.lower() in text]
         lanes = [r for r in gaz["routes"] if " " in r and r.lower() in text and r not in ("Cape of Good Hope",)]
         lanes += [a for a in gaz.get("route_aliases", {}) if a.lower() in text]

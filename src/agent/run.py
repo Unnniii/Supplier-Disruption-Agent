@@ -35,7 +35,7 @@ from agent.llm import CapExceeded, QuotaExhausted, make_llm
 
 
 def load_news(ids: list[str] | None) -> list[dict]:
-    news = json.loads((config.ROOT / "data" / "news.json").read_text())
+    news = json.loads((config.ROOT / "data" / "news.json").read_text(encoding="utf-8"))
     return [n for n in news if not ids or n["news_id"] in ids]
 
 
@@ -44,7 +44,7 @@ def unfinished(run_id: str | None = None) -> tuple[str, list[str]]:
     from the log, or whose last attempt ended in error."""
     if not config.LOG_PATH.exists():
         raise SystemExit("No runs yet: nothing to resume.")
-    rows = [json.loads(line) for line in config.LOG_PATH.read_text().splitlines() if line.strip()]
+    rows = [json.loads(line) for line in config.LOG_PATH.read_text(encoding="utf-8").splitlines() if line.strip()]
     run_id = run_id or rows[-1]["run_id"]
     last = {r["news_id"]: r for r in rows if r["run_id"] == run_id}
     if not last:
@@ -60,7 +60,7 @@ SEQUENCE_PATH = config.ROOT / "eval" / "event_sequence.json"
 
 
 def load_sequence() -> list[dict]:
-    return json.loads(SEQUENCE_PATH.read_text())["news"]
+    return json.loads(SEQUENCE_PATH.read_text(encoding="utf-8"))["news"]
 
 
 def scan(news_items: list[dict], fake: bool, log: bool = True, progress: bool = False,
@@ -125,7 +125,7 @@ def scan(news_items: list[dict], fake: bool, log: bool = True, progress: bool = 
                   f"(model calls so far: {llm.calls})", flush=True)
         if log:
             config.LOG_PATH.parent.mkdir(exist_ok=True)
-            with config.LOG_PATH.open("a") as f:
+            with config.LOG_PATH.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, default=str) + "\n")
     return results
 

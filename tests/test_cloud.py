@@ -70,3 +70,16 @@ def test_deployment_files_exist():
     for f in ["Dockerfile", ".dockerignore", "infra/main.tf", "infra/variables.tf", "infra/outputs.tf",
               "scripts/deploy_gcp.ps1"]:
         assert (config.ROOT / f).exists(), f
+
+
+def test_every_file_read_and_write_is_utf8():
+    """Windows defaults to cp1252, which cannot write ✓ or most non-English headlines."""
+    import re
+    bad = []
+    for path in list((config.ROOT / "src").rglob("*.py")) + list((config.ROOT / "scripts").glob("*.py")):
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"\.(read_text|write_text)\(", line) and "encoding=" not in line:
+                bad.append(f"{path.name}:{n}")
+            if re.search(r"\.open\(\"[aw]\"\)", line):
+                bad.append(f"{path.name}:{n}")
+    assert not bad, bad
