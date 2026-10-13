@@ -76,6 +76,7 @@ This project is a team of robot helpers that read the news every morning and sho
 | `infra/variables.tf` | The knobs: project id, region, schedule time, how many headlines, the call cap. |
 | `infra/outputs.tf` | What Terraform tells you after deploying: commands to run the job now and see the alerts. |
 | `infra/bigquery_schema.json` | The columns of the BigQuery table: one row per headline per run. |
+| `infra/bigquery_events_schema.json` | The columns of the memory table: one row per disaster being tracked. |
 
 ### `src/agent/`: the brain
 
@@ -92,6 +93,7 @@ This project is a team of robot helpers that read the news every morning and sho
 | `llm.py` | The phone line to the AI. Can call Gemini (free), Ollama (on your laptop) or Claude (paid). Also has the cap that stops a run after 300 calls (150 in the cloud), and stops at once if the free daily quota is used up. |
 | `schemas.py` | The forms each robot must fill in. If the answer is not in the right shape, it is rejected. |
 | `config.py` | All the settings in one place: which AI, the cap, file locations. |
+| `events.py` | The memory. Remembers which disasters it has already told you about, so the same story in five newspapers is one alert, not five. It only speaks up again if things get worse. |
 | `sinks.py` | Copies each run's results into BigQuery when running in the cloud, because the cloud box forgets everything when it stops. |
 | `fake.py` | A pretend AI made of simple rules. Lets you test everything for free with no internet. |
 | `__init__.py` | An empty file that tells Python "this folder is a package". |
@@ -101,6 +103,7 @@ This project is a team of robot helpers that read the news every morning and sho
 | File | What it is |
 |---|---|
 | `eval/ground_truth.json` | The right answers, written by hand: which shops each story should flag, and the traps. |
+| `eval/event_sequence.json` | 10 news stories in date order, with the right memory decision for each (new, still going, getting worse). Tests the memory. |
 | `eval/rag_questions.json` | 14 questions about contracts, with the contract that should be found. Tests the RAG. |
 | `eval/results.md` | The latest score card, written by `evaluate.py`. |
 | `eval/history.jsonl` | Every score card ever, one line each, so you can show "before and after". |
@@ -112,6 +115,7 @@ This project is a team of robot helpers that read the news every morning and sho
 | `tests/test_data_and_map.py` | Checks the pretend data makes sense, the map step finds the right shops for every story, and new shops did not change old ones. |
 | `tests/test_agents_graph.py` | Checks the boss sends robots in the right order, handles mistakes, reads live news safely and scores correctly. |
 | `tests/test_llm_adapters.py` | Checks the phone lines to Gemini and Ollama, the cap, and the fixes from the first real run. |
+| `tests/test_events.py` | Checks the memory rules: same story is matched, different story is not, a bigger flood counts as worse, old stories expire. |
 | `tests/test_cloud.py` | Checks the BigQuery writer, that its columns match the table, and that the deploy files exist. |
 | `tests/conftest.py` | Setup for tests: build the database if missing, never use the internet. |
 | `tests/__init__.py` | Empty file so tests can share helpers. |
@@ -140,6 +144,7 @@ run.py
   -> graph.py (the boss)
        -> Scanner  (agents.py)            no tools
        -> Mapper   (agents.py + erp.py)   map tools
+       -> Events   (events.py)            seen this before? if nothing new, stop here
        -> Impact   (agents.py + erp.py)   stock tools, then maths double-check
        -> Advisor  (agents.py + rag.py)   contract search
        -> Verifier (agents.py)            rule checks, may send Advisor back once

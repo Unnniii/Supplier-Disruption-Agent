@@ -1,0 +1,74 @@
+[
+  {
+    "name": "event_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "EV-<first day>-<hash>"
+  },
+  {
+    "name": "event_type",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "fire, flood, route_blocked, ..."
+  },
+  {
+    "name": "title",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "First headline that reported it"
+  },
+  {
+    "name": "locations",
+    "type": "STRING",
+    "mode": "REPEATED",
+    "description": "Places, routes, ports and countries, normalised"
+  },
+  {
+    "name": "supplier_ids",
+    "type": "STRING",
+    "mode": "REPEATED",
+    "description": "Every supplier this event has exposed so far"
+  },
+  {
+    "name": "max_severity",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Worst severity reported"
+  },
+  {
+    "name": "first_seen",
+    "type": "DATE",
+    "mode": "NULLABLE",
+    "description": "Event date of the first report"
+  },
+  {
+    "name": "last_seen",
+    "type": "DATE",
+    "mode": "NULLABLE",
+    "description": "Event date of the latest report"
+  },
+  {
+    "name": "headline_count",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "Reports matched to this event"
+  },
+  {
+    "name": "status",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "open or resolved"
+  },
+  {
+    "name": "news_ids",
+    "type": "STRING",
+    "mode": "REPEATED",
+    "description": "Latest 20 headline ids"
+  },
+  {
+    "name": "updated_at",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "Last change (UTC)"
+  }
+]

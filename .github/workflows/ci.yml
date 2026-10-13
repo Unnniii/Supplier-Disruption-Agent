@@ -20,6 +20,10 @@ jobs:
         run: |
           uv run python -m agent.run --fake
           uv run python -m agent.evaluate --no-rag
+      - name: Event memory sequence, scored
+        run: |
+          uv run python -m agent.run --sequence --fake
+          uv run python -m agent.evaluate
 
   terraform:
     runs-on: ubuntu-latest

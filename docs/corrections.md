@@ -2,6 +2,13 @@
 
 Every bug, wrong assumption and process failure, with what caught it. Newest first.
 
+## 2026-10-13: no memory between runs
+
+| What went wrong | What caught it | Fix |
+|---|---|---|
+| Every headline was judged alone, so an article about *ongoing* Red Sea risk flagged 15 suppliers as if it were news, and it would do so again every day. Five reports of one strike would be five alerts. | The first live cloud run, read by a person. | Event memory (`agent/events.py`): the LLM extracts what and where, and plain code decides new, escalated, ongoing or resolved. Known events stop before the expensive agents. State lives in BigQuery between runs. A 10-headline scored sequence tests repeats, escalation, a subset-overlap trap and a 44-day gap. |
+| Design trap avoided: recording an event as soon as it is seen would mean a crash after that point silently suppresses an alert that was never sent. | Design review. | Decisions are committed to memory only after the headline completes without error. |
+
 ## 2026-10-12: first cloud run
 
 | What went wrong | What caught it | Fix |

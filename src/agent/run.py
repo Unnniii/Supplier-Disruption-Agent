@@ -6,6 +6,11 @@
     uv run python -m agent.run --news N01 N07     # only some headlines
     uv run python -m agent.run --live             # today's real headlines from GDELT (not scored)
     uv run python -m agent.run --resume           # finish the latest run: redo only errored/missing headlines
+    uv run python -m agent.run --sequence --fake  # scored event-memory test: repeats, escalations, a gap
+
+Event memory (agent/events.py) is on for --live, --sequence and --memory: a
+known event with nothing new is logged as "ongoing" and not alerted again.
+Scored replays of data/news.json run without it, so every headline is judged alone.
 
 If the call cap or the provider's daily quota is hit, the run stops at once and
 the unfinished headlines are not logged; `--resume` picks them up later under
@@ -51,10 +56,17 @@ def unfinished(run_id: str | None = None) -> tuple[str, list[str]]:
     return run_id, todo
 
 
+SEQUENCE_PATH = config.ROOT / "eval" / "event_sequence.json"
+
+
+def load_sequence() -> list[dict]:
+    return json.loads(SEQUENCE_PATH.read_text())["news"]
+
+
 def scan(news_items: list[dict], fake: bool, log: bool = True, progress: bool = False,
-         run_id: str | None = None) -> list[dict]:
+         run_id: str | None = None, memory=None) -> list[dict]:
     llm = make_llm("fake" if fake else None)
-    graph = build_graph(llm)
+    graph = build_graph(llm, memory)
     run_id = run_id or uuid.uuid4().hex[:8]
     results = []
     if progress:
@@ -69,6 +81,9 @@ def scan(news_items: list[dict], fake: bool, log: bool = True, progress: bool = 
             print(f"\nStopped: {e}. {left} headline(s) not run and not logged.\n"
                   f"Finish later with:  uv run python -m agent.run --resume", flush=True)
             break
+        event = state.get("event") or {}
+        if memory is not None and event and state.get("status") != "error":
+            memory.commit(event, state["scan"], [x["supplier_id"] for x in state.get("suppliers", [])], item)
         tokens_in = sum(u.get("input_tokens", 0) for u in state.get("usage", []))
         tokens_out = sum(u.get("output_tokens", 0) for u in state.get("usage", []))
         record = {
@@ -83,6 +98,11 @@ def scan(news_items: list[dict], fake: bool, log: bool = True, progress: bool = 
             "url": item.get("url"),
             "status": state.get("status"),
             "error": state.get("error"),
+            "event_id": event.get("event_id"),
+            "event_status": event.get("event_status"),
+            "event_new_suppliers": event.get("new_suppliers", []),
+            "event_matched_on": event.get("matched_on"),
+            "model_calls": sum(u.get("model_calls", 0) for u in state.get("usage", [])),
             "scan": state.get("scan"),
             "suppliers": state.get("suppliers", []),
             "impact": state.get("impact"),
@@ -99,7 +119,8 @@ def scan(news_items: list[dict], fake: bool, log: bool = True, progress: bool = 
         }
         results.append(record)
         if progress:
-            print(f"  [{n}/{len(news_items)}] {item['news_id']} {record['status']:<13} "
+            tag = f" [{record['event_status']} {record['event_id']}]" if record["event_status"] else ""
+            print(f"  [{n}/{len(news_items)}] {item['news_id']} {record['status']:<13}{tag} "
                   f"{record['seconds']:>5.1f}s  {len(record['suppliers'])} suppliers  "
                   f"(model calls so far: {llm.calls})", flush=True)
         if log:
@@ -114,7 +135,13 @@ def print_alerts(results: list[dict]) -> None:
         if r["status"] in ("no_disruption", "no_exposure"):
             print(f"[{r['news_id']}] {r['status']:<13} {r['headline']}")
             continue
-        print(f"\n[{r['news_id']}] {r['status'].upper()}  {r['headline']}")
+        if r["status"] == "ongoing":
+            print(f"[{r['news_id']}] ongoing       {r['event_id']} ({r['event_matched_on']}) {r['headline']}")
+            continue
+        label = f"  {r['event_status'].upper()} {r['event_id']}" if r.get("event_status") else ""
+        print(f"\n[{r['news_id']}] {r['status'].upper()}{label}  {r['headline']}")
+        if r.get("event_status") == "escalated":
+            print(f"    ↑ escalated: {r['event_matched_on']}")
         if r["error"]:
             print(f"    error: {r['error']}")
             continue
@@ -145,9 +172,23 @@ def main() -> None:
     ap.add_argument("--max-live", type=int, default=15, help="cap on live headlines per run (protects the free quota)")
     ap.add_argument("--resume", nargs="?", const="latest", metavar="RUN_ID",
                     help="redo only the errored or missing headlines of the latest (or given) run")
+    ap.add_argument("--sequence", action="store_true",
+                    help="run the scored event-memory sequence (eval/event_sequence.json) with fresh memory")
+    ap.add_argument("--memory", action="store_true",
+                    help="use persistent event memory for a replay too (on by default for --live)")
     args = ap.parse_args()
     run_id = None
-    if args.resume:
+    memory = None
+    if args.sequence:
+        from agent.events import EventMemory, MemoryStore
+        memory = EventMemory(MemoryStore())
+    elif args.live or args.memory:
+        from agent.events import EventMemory
+        memory = EventMemory()
+        print(f"Event memory: {len(memory.open_events())} open event(s) loaded.")
+    if args.sequence:
+        news = load_sequence()
+    elif args.resume:
         run_id, todo = unfinished(None if args.resume == "latest" else args.resume)
         if not todo:
             print(f"Run {run_id} is already complete. Score it with: uv run python -m agent.evaluate")
@@ -160,7 +201,13 @@ def main() -> None:
         print(f"Fetched {len(news)} live headlines (saved to data/live/)")
     else:
         news = load_news(args.news)
-    results = scan(news, args.fake, progress=True, run_id=run_id)
+    results = scan(news, args.fake, progress=True, run_id=run_id, memory=memory)
+    if memory is not None:
+        dates = [n.get("event_date", "") for n in news if n.get("event_date")]
+        closed = memory.sweep(max(dates) if dates else None)
+        memory.save()
+        print(f"Event memory: {len(memory.open_events())} open, {len(closed)} closed this run"
+              + (f" ({', '.join(closed)})" if closed else "") + ".")
     if os.getenv("SDA_BQ_TABLE"):
         from agent.sinks import write_bigquery
         n = write_bigquery(results)  # raises on failure, so a cloud job shows as failed
@@ -169,7 +216,9 @@ def main() -> None:
     print_alerts(results)
     if args.live:
         hits = [r for r in results if r["status"] not in ("no_disruption", "no_exposure")]
-        print(f"Live summary: {len(hits)} of {len(results)} headlines touch our suppliers.")
+        quiet = sum(r["status"] == "ongoing" for r in results)
+        print(f"Live summary: {len(hits)} of {len(results)} headlines touch our suppliers; "
+              f"{len(hits) - quiet} alerted, {quiet} already-known event(s) not re-alerted.")
 
 
 if __name__ == "__main__":

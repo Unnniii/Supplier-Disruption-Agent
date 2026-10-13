@@ -4,6 +4,10 @@
     uv run python -m agent.evaluate --run-id ab12cd34
     uv run python -m agent.evaluate --no-rag     # skip the retrieval check (saves embedding calls)
 
+If the latest run is the event-memory sequence (agent.run --sequence), it is
+scored on event decisions instead: new / ongoing / escalated per headline,
+whether reports of one real event got one event id, and alerts avoided.
+
 What is scored, and how:
   Scanner     is_disruption matches the key                       -> accuracy
   Mapper      flagged suppliers vs expected                       -> precision, recall, F1
@@ -29,6 +33,8 @@ from agent import config
 TRUTH_PATH = config.ROOT / "eval" / "ground_truth.json"
 RAG_PATH = config.ROOT / "eval" / "rag_questions.json"
 RESULTS_MD = config.ROOT / "eval" / "results.md"
+SEQUENCE_PATH = config.ROOT / "eval" / "event_sequence.json"
+EVENTS_MD = config.ROOT / "eval" / "results_events.md"
 HISTORY = config.ROOT / "eval" / "history.jsonl"
 
 
@@ -149,6 +155,52 @@ def score_retrieval(questions: list[dict], retriever=None) -> dict[str, Any]:
             "mrr": round(rr / n, 3) if n else None, "misses": misses}
 
 
+def score_events(records: list[dict], sequence: list[dict]) -> dict[str, Any]:
+    """Event memory: right decision per headline, right grouping, alerts avoided."""
+    by_id = {r["news_id"]: r for r in records}
+    rows, ok = [], 0
+    for item in sequence:
+        r = by_id.get(item["news_id"], {})
+        got = r.get("event_status")
+        right = got == item["expected_event_status"] or got in item.get("also_ok", [])
+        ok += right
+        rows.append({"news_id": item["news_id"], "expected": item["expected_event_status"], "got": got,
+                     "right": right, "event_id": r.get("event_id"), "status": r.get("status"),
+                     "model_calls": r.get("model_calls", 0),
+                     "why": item["why"]})
+    pairs = same = 0
+    for i, a in enumerate(sequence):
+        for b in sequence[i + 1:]:
+            ea, eb = by_id.get(a["news_id"], {}).get("event_id"), by_id.get(b["news_id"], {}).get("event_id")
+            if ea is None or eb is None:   # a headline judged "not a disruption" has no event: skip the pair
+                continue
+            pairs += 1
+            same += (a["group"] == b["group"]) == (ea == eb)
+    alerts = sum(1 for r in rows if r["status"] in ("approved", "needs_review"))
+    exposed = sum(1 for r in rows if r["status"] not in ("no_disruption", "no_exposure", None))
+    full = [r["model_calls"] for r in rows if r["got"] in ("new", "escalated") and r["model_calls"]]
+    quiet = [r["model_calls"] for r in rows if r["got"] == "ongoing"]
+    avg_full = sum(full) / len(full) if full else 0
+    return {"headlines": len(sequence), "decisions_right": ok, "decision_accuracy": _ratio(ok, len(sequence)),
+            "grouping_accuracy": _ratio(same, pairs), "alerts": alerts, "alerts_without_memory": exposed,
+            "model_calls": sum(r["model_calls"] for r in rows),
+            "model_calls_saved": round(sum(avg_full - q for q in quiet)), "rows": rows}
+
+
+def render_events(ev: dict, meta: dict) -> str:
+    lines = [f"# Event memory: run `{meta['run_id']}`", "",
+             f"Model `{meta['model']}` · scored {meta['scored_at']} · {ev['headlines']} headlines in order, fresh memory", "",
+             "| What | Score |", "|---|---|",
+             f"| Event decision right (new / ongoing / escalated) | {ev['decisions_right']} / {ev['headlines']} |",
+             f"| Same real event got the same event id (pairwise) | {_pct(ev['grouping_accuracy'])} |",
+             f"| Alerts sent | {ev['alerts']} (without memory: {ev['alerts_without_memory']}) |",
+             f"| Model calls | {ev['model_calls']} (about {ev['model_calls_saved']} saved by stopping known events early) |",
+             "", "| Headline | Expected | Got | Event | Why this case is here |", "|---|---|---|---|---|"]
+    lines += [f"| {r['news_id']} | {r['expected']} | {'✓ ' if r['right'] else '✗ '}{r['got']} | "
+              f"`{r['event_id']}` | {r['why']} |" for r in ev["rows"]]
+    return "\n".join(lines + [""])
+
+
 def _pct(x: float | None) -> str:
     return "n/a" if x is None else f"{x * 100:.0f}%"
 
@@ -202,6 +254,19 @@ def main() -> None:
 
     truth = json.loads(TRUTH_PATH.read_text())
     records = load_run(args.run_id)
+    sequence = json.loads(SEQUENCE_PATH.read_text())["news"]
+    if {r["news_id"] for r in records} <= {n["news_id"] for n in sequence}:
+        ev = score_events(records, sequence)
+        meta = {"run_id": records[0]["run_id"], "model": records[0].get("model"),
+                "scored_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        report = render_events(ev, meta)
+        EVENTS_MD.write_text(report)
+        with HISTORY.open("a") as f:
+            f.write(json.dumps({**meta, "kind": "event_sequence",
+                                **{k: v for k, v in ev.items() if k != "rows"}}) + "\n")
+        print(report)
+        print(f"Saved {EVENTS_MD.relative_to(config.ROOT)} and appended to {HISTORY.relative_to(config.ROOT)}")
+        return
     run = score_run(records, truth)
     rag = None if args.no_rag else score_retrieval(json.loads(RAG_PATH.read_text()))
     meta = {"run_id": records[0]["run_id"], "model": records[0].get("model"),

@@ -20,6 +20,8 @@ COLUMNS = [
     "status", "error", "is_disruption", "event_type", "supplier_ids", "high_risk_suppliers",
     "min_days_of_cover", "backup_warnings", "revisions", "input_tokens", "output_tokens",
     "cost_usd", "seconds", "record",
+    # added with event memory; new columns go at the end so BigQuery can add them in place
+    "event_id", "event_status", "model_calls",
 ]
 
 
@@ -52,6 +54,9 @@ def to_row(r: dict[str, Any]) -> dict[str, Any]:
         "cost_usd": r.get("cost_usd", 0.0),
         "seconds": r.get("seconds"),
         "record": json.dumps(r, default=str),
+        "event_id": r.get("event_id"),
+        "event_status": r.get("event_status"),
+        "model_calls": r.get("model_calls"),
     }
 
 

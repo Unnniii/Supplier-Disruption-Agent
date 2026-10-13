@@ -22,3 +22,7 @@ output "console_job" {
 output "console_bigquery" {
   value = "https://console.cloud.google.com/bigquery?project=${var.project_id}&ws=!1m4!1m3!3m2!1s${var.project_id}!2s${google_bigquery_dataset.sda.dataset_id}"
 }
+
+output "see_events" {
+  value = "bq query --use_legacy_sql=false 'SELECT event_id, status, event_type, headline_count, first_seen, last_seen, title FROM `${local.bq_events}` ORDER BY last_seen DESC'"
+}

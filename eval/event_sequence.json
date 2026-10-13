@@ -1,0 +1,108 @@
+{
+  "about": "Scored test of event memory (agent/events.py). Run in order with fresh memory: uv run python -m agent.run --sequence [--fake], then uv run python -m agent.evaluate. 'group' says which headlines are the same real-world event; 'expected_event_status' is what the memory should decide. Without memory every exposed headline would alert.",
+  "news": [
+    {
+      "news_id": "E01",
+      "event_date": "2026-03-02",
+      "kind": "sequence",
+      "headline": "Houthi missile attacks force container ships away from the Red Sea",
+      "body": "Major carriers pause transits through the Red Sea and the Bab el-Mandeb strait after attacks on merchant vessels.",
+      "expected_event_status": "new",
+      "group": "A",
+      "why": "First report of the Red Sea crisis."
+    },
+    {
+      "news_id": "E02",
+      "event_date": "2026-03-04",
+      "kind": "sequence",
+      "headline": "Shipping lines extend Red Sea diversions as attacks continue",
+      "body": "Carriers say ships will keep sailing around Africa instead of using the Red Sea route.",
+      "expected_event_status": "ongoing",
+      "group": "A",
+      "why": "Same situation, same suppliers: no new alert."
+    },
+    {
+      "news_id": "E03",
+      "event_date": "2026-03-05",
+      "kind": "sequence",
+      "headline": "Fire breaks out at semiconductor plant in Hitachinaka",
+      "body": "A fire at a chip factory in Hitachinaka has halted production.",
+      "expected_event_status": "new",
+      "group": "B",
+      "why": "Unrelated event on the same days: must not be merged with A."
+    },
+    {
+      "news_id": "E04",
+      "event_date": "2026-03-06",
+      "kind": "sequence",
+      "headline": "Hitachinaka chip plant fire: production halted for second day",
+      "body": "The fire at the Hitachinaka factory is out but the plant remains shut.",
+      "expected_event_status": "ongoing",
+      "group": "B",
+      "why": "Follow-up report of B."
+    },
+    {
+      "news_id": "E05",
+      "event_date": "2026-03-07",
+      "kind": "sequence",
+      "headline": "Insurers warn Red Sea attacks will raise freight costs",
+      "body": "Underwriters say war-risk premiums for ships using the Red Sea will rise again.",
+      "expected_event_status": "ongoing",
+      "group": "A",
+      "why": "Risk commentary about a known situation: the live run alerted on this kind of article; memory should not. Calling it 'not a disruption' is also fine: either way, no alert.",
+      "also_ok": [
+        null
+      ]
+    },
+    {
+      "news_id": "E06",
+      "event_date": "2026-03-08",
+      "kind": "sequence",
+      "headline": "Dockworkers at the Port of Felixstowe begin a week-long strike",
+      "body": "Container handling at Felixstowe has stopped.",
+      "expected_event_status": "new",
+      "group": "C",
+      "why": "Different event whose suppliers are a subset of A's (6 of 15): overlap alone must not merge them."
+    },
+    {
+      "news_id": "E07",
+      "event_date": "2026-03-09",
+      "kind": "sequence",
+      "headline": "Heavy flooding hits factories in Taipei",
+      "body": "Floodwater has entered industrial areas around Taipei.",
+      "expected_event_status": "new",
+      "group": "D",
+      "why": "New flood, one supplier exposed."
+    },
+    {
+      "news_id": "E08",
+      "event_date": "2026-03-10",
+      "kind": "sequence",
+      "headline": "Flooding spreads from Taipei to Taichung industrial parks",
+      "body": "Rising water now affects plants in both Taipei and Taichung.",
+      "expected_event_status": "escalated",
+      "group": "D",
+      "why": "Same flood, a second supplier now exposed: must alert again."
+    },
+    {
+      "news_id": "E09",
+      "event_date": "2026-03-11",
+      "kind": "sequence",
+      "headline": "Taichung and Taipei factories still flooded",
+      "body": "Plants in Taipei and Taichung remain shut by floodwater.",
+      "expected_event_status": "ongoing",
+      "group": "D",
+      "why": "Nothing new since E08."
+    },
+    {
+      "news_id": "E10",
+      "event_date": "2026-04-20",
+      "kind": "sequence",
+      "headline": "New wave of attacks on ships in the Red Sea",
+      "body": "Carriers again divert from the Red Sea after fresh attacks.",
+      "expected_event_status": "new",
+      "group": "A2",
+      "why": "Same route, but 44 days after A was last reported: A has closed, so this is a new event."
+    }
+  ]
+}

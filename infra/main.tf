@@ -28,8 +28,9 @@ provider "google" {
 data "google_project" "this" {}
 
 locals {
-  image    = var.image != "" ? var.image : "${var.region}-docker.pkg.dev/${var.project_id}/sda/agent:latest"
-  bq_table = "${var.project_id}.${google_bigquery_dataset.sda.dataset_id}.${google_bigquery_table.runs.table_id}"
+  image     = var.image != "" ? var.image : "${var.region}-docker.pkg.dev/${var.project_id}/sda/agent:latest"
+  bq_table  = "${var.project_id}.${google_bigquery_dataset.sda.dataset_id}.${google_bigquery_table.runs.table_id}"
+  bq_events = "${var.project_id}.${google_bigquery_dataset.sda.dataset_id}.${google_bigquery_table.events.table_id}"
   apis = [
     "run.googleapis.com",
     "cloudscheduler.googleapis.com",
@@ -160,6 +161,17 @@ resource "google_bigquery_table" "runs" {
   clustering = ["status", "event_type"]
 }
 
+# Event memory: one row per real-world event, rewritten at the end of each run
+# (agent/events.py). This is how the job remembers yesterday: its own disk is
+# wiped after every run.
+resource "google_bigquery_table" "events" {
+  dataset_id          = google_bigquery_dataset.sda.dataset_id
+  table_id            = "events"
+  description         = "Open and recently resolved disruption events. Rewritten by each run with a free load job."
+  schema              = file("${path.module}/bigquery_events_schema.json")
+  deletion_protection = var.protect_data
+}
+
 resource "google_bigquery_table" "alerts" {
   dataset_id          = google_bigquery_dataset.sda.dataset_id
   table_id            = "alerts"
@@ -168,7 +180,7 @@ resource "google_bigquery_table" "alerts" {
   view {
     use_legacy_sql = false
     query          = <<-SQL
-      SELECT run_at, news_id, headline, url, event_type, supplier_ids,
+      SELECT run_at, news_id, headline, url, event_id, event_status, event_type, supplier_ids,
              high_risk_suppliers, min_days_of_cover, backup_warnings, status
       FROM `${local.bq_table}`
       WHERE status IN ('approved', 'needs_review')
@@ -189,9 +201,13 @@ resource "google_bigquery_table" "daily_summary" {
              COUNT(*) AS headlines,
              COUNTIF(is_disruption) AS disruptions,
              COUNTIF(status IN ('approved', 'needs_review')) AS alerts,
+             COUNTIF(event_status = 'new') AS new_events,
+             COUNTIF(event_status = 'escalated') AS escalations,
+             COUNTIF(status = 'ongoing') AS repeats_not_alerted,
              COUNTIF(status = 'error') AS errors,
              SUM(backup_warnings) AS backup_warnings,
              SUM(input_tokens + output_tokens) AS tokens,
+             SUM(model_calls) AS model_calls,
              ROUND(SUM(cost_usd), 4) AS cost_usd
       FROM `${local.bq_table}`
       GROUP BY day
@@ -236,6 +252,10 @@ resource "google_cloud_run_v2_job" "scan" {
         env {
           name  = "SDA_BQ_TABLE"
           value = local.bq_table
+        }
+        env {
+          name  = "SDA_BQ_EVENTS"
+          value = local.bq_events
         }
         env {
           name = "GEMINI_API_KEY"

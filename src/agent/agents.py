@@ -41,10 +41,12 @@ class AgentRun:
     output_tokens: int = 0
     seconds: float = 0.0
     repairs: int = 0
+    model_calls: int = 0
 
     def usage(self) -> dict[str, Any]:
         return {"agent": self.agent, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens,
-                "tool_calls": len(self.tool_calls), "repairs": self.repairs, "seconds": round(self.seconds, 2)}
+                "model_calls": self.model_calls, "tool_calls": len(self.tool_calls), "repairs": self.repairs,
+                "seconds": round(self.seconds, 2)}
 
 
 _JSON = re.compile(r"\{.*\}", re.DOTALL)
@@ -79,6 +81,7 @@ def run_tool_agent(llm: LLM, *, agent: str, system: str, payload: Any,
     for _ in range(config.MAX_AGENT_TURNS):
         resp = llm.complete(agent=agent, system=system + _output_rule(schema), messages=messages,
                             tools=[t.spec() for t in tools] or None)
+        run.model_calls += 1
         run.input_tokens += resp.input_tokens
         run.output_tokens += resp.output_tokens
         if not resp.tool_calls:

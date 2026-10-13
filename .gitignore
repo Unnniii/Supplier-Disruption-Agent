@@ -5,6 +5,7 @@
 data/erp.db
 data/chroma/
 data/live/
+data/events.json
 
 # run logs
 logs/
@@ -19,3 +20,6 @@ infra/.terraform/
 infra/*.tfstate*
 infra/.terraform.lock.hcl.bak
 infra/terraform.tfvars
+eval/results.md
+eval/results_events.md
+eval/history.jsonl

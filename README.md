@@ -11,7 +11,7 @@ It runs against the ERP of **Northgate Motors**, a fictional car maker with two 
 
 ![Architecture: news in, four AI agents orchestrated by LangGraph, plain-code tools and data, a code verifier, alerts and logs, scored against a hand-written answer key](docs/architecture.png)
 
-> Status: two full scored runs on Gemini (results below), 73 tests, CI on every push, and a daily scan deployable to GCP's free tier with one command (Terraform, Cloud Run Job, Cloud Scheduler, BigQuery). Every bug found along the way is logged in [docs/corrections.md](docs/corrections.md).
+> Status: two full scored runs on Gemini (results below), event memory across runs, 96 tests, CI on every push, and a daily scan deployable to GCP's free tier with one command (Terraform, Cloud Run Job, Cloud Scheduler, BigQuery). Every bug found along the way is logged in [docs/corrections.md](docs/corrections.md).
 
 ## The agents
 
@@ -32,6 +32,8 @@ scanner --(not a disruption)------------------------------> END
    |
 mapper  --(no supplier exposed)---------------------------> END
    |
+events  --(known event, nothing new: "ongoing")-----------> END     no model call; live and --sequence runs
+   |
 impact -> advisor -> verifier --(issues, first time)--> advisor
                          |
                          +--(approved, or out of revisions)--> END
@@ -43,6 +45,47 @@ impact -> advisor -> verifier --(issues, first time)--> advisor
 - If an agent returns invalid JSON it gets one repair turn with its own error message before the headline is marked `error`.
 - A failing agent marks that headline `error` and the batch carries on.
 - Every headline is logged to `logs/runs.jsonl` with each agent's tokens, tool calls, time and cost.
+
+## Event memory: alert on what changed, not on every headline
+
+Without memory, five articles about one port strike are five alerts, every day the strike lasts. The first live cloud run showed it: an article about *ongoing* Red Sea risk flagged 15 suppliers as if it were news. `agent/events.py` adds state that lasts between runs.
+
+| Decision | When | What happens |
+|---|---|---|
+| **new** | no open event matches | full analysis, alert |
+| **escalated** | known event, but a new supplier is exposed or severity went up | full analysis, alert, says what changed |
+| **ongoing** | known event, nothing new | stops after the Mapper: no Impact, Advisor or Verifier calls, no alert |
+| **resolved** | not reported for 14 days | closed; a later report starts a new event |
+
+**Who decides what.** The LLM agents extract *what* happened and *where*, and the ERP tools say *which suppliers* are exposed. Whether two reports are the same event is decided in plain code, so it is repeatable and testable. Two reports are one event if they are within 14 days and either (a) their exposed suppliers overlap by at least 60% (Jaccard), or (b) they have the same event type and share a place, route, port or country. Overlap is the stronger signal: "Houthi attacks" (conflict) and "shippers worried about Suez transits" (route_blocked) have different types but hit the same 15 suppliers. Route aliases are normalised first, so "Red Sea" is the Suez lane.
+
+**Commit after success.** A decision is written to memory only once its headline has been fully handled. If the run crashes halfway, the event is not marked as seen, so a crash can never swallow an alert that was never sent.
+
+**Storage.** On a laptop: `data/events.json`. In the cloud: a BigQuery `events` table. It is read once at the start of a run (free table read) and rewritten once at the end (free load job), because the container's disk is wiped after every run. One scan runs at a time, so there is no locking.
+
+**Scored replays are unaffected.** The 34-headline evaluation runs without memory, so each headline is still judged on its own.
+
+**How it is tested.** `eval/event_sequence.json` holds 10 headlines in date order, each with the decision it should get. The cases cover:
+- a repeat
+- risk commentary about a known event
+- an unrelated event on the same days
+- a strike whose suppliers are a subset of the Red Sea set (6 of 15, which must *not* merge)
+- a flood that spreads to a second supplier (escalation)
+- the same route 44 days later (a new event)
+
+```bash
+uv run python -m agent.run --sequence --fake    # or without --fake for Gemini
+uv run python -m agent.evaluate                 # scores the event decisions
+```
+
+| | Stand-in model (`--fake`) |
+|---|---|
+| Event decision right | 10 / 10 |
+| Same real event, same event id (pairwise) | 100% |
+| Alerts sent | 6 (without memory: 10) |
+| Model calls | 54 (about 16 saved; a repeat costs 3 calls instead of 7) |
+
+These are stand-in model numbers; the sequence has not been run on Gemini yet. The matching rules are also covered by unit tests in `tests/test_events.py`.
 
 ## Models and cost: built to run for £0
 
@@ -153,12 +196,13 @@ Cloud Run Job  sda-daily-scan   (container from Artifact Registry, runs as sda-j
         |  Gemini key from Secret Manager
         v
 BigQuery  supplier_disruption.runs   one row per headline, partitioned by day
+          supplier_disruption.events event memory: read at start, rewritten at end of each run
           views: alerts (what touched our suppliers), daily_summary (read / flagged / errors / tokens / cost)
 ```
 
 Everything is in Terraform (`infra/`). The image is built by Cloud Build (`cloudbuild.yaml`). `scripts/deploy_gcp.ps1` does the whole deployment in one command.
 
-**First live cloud run** (12 October 2026, 15 real headlines from publisher feeds; GDELT and Google News refused Cloud Run's IPs): 7 judged disruptions, 2 alerts, 0 errors, 81,094 tokens, $0. Both alerts are debatable. "Shippers stressing over risks from Suez Canal and Red Sea transits" flagged all 15 Suez-route suppliers, but it describes an ongoing risk, not a new event. A Mexican trucker shortage was labelled an export control. Traps were handled: "BD strikes supply chain pact" was rejected, and Hormuz tanker attacks were judged real but with no supplier exposed. The answer key has no "risk commentary versus actual event" cases; it needs some.
+**First live cloud run** (12 October 2026, 15 real headlines from publisher feeds; GDELT and Google News refused Cloud Run's IPs): 7 judged disruptions, 2 alerts, 0 errors, 81,094 tokens, $0. Both alerts are debatable. "Shippers stressing over risks from Suez Canal and Red Sea transits" flagged all 15 Suez-route suppliers, but it describes an ongoing risk, not a new event. A Mexican trucker shortage was labelled an export control. Traps were handled: "BD strikes supply chain pact" was rejected, and Hormuz tanker attacks were judged real but with no supplier exposed. The answer key has no "risk commentary versus actual event" cases. This run is why event memory exists (see below): a repeat of a known situation is no longer re-alerted.
 
 **Design choices**
 - **A Job, not a Service.** A scan is a batch: it starts, runs for a few minutes and exits. Nothing sits idle and nothing is publicly reachable.
@@ -229,7 +273,8 @@ Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise C
 
 - The verifier checks that a cited clause names the backup, not that the backup is in the right direction. For example, Taichung's contract names Hitachinaka because Taichung is Hitachinaka's backup. A model could misread that as "Hitachinaka is Taichung's backup" and pass the check.
 - When the Scanner names both a country and a city, a wide radius (war: 600 km) from the city can catch suppliers in neighbouring countries. The evaluation will show how often this happens.
-- Live mode over-alerts on articles about ongoing risk ("shippers worried about the Red Sea") as if they were new events. The answer key does not test this yet.
+- Event memory stops *repeat* alerts, but the first article about a long-running risk still alerts once. Telling "risk commentary" apart from "new event" on first sight is not solved.
+- Event matching uses fixed thresholds (14 days, 60% overlap) chosen by hand, not tuned on data.
 - Coverage (full / partial / none) is judged by the model on every headline, so the same contract can get different answers on different days (S002 and S027 in the results above).
 - The Ollama path is tested with stand-ins only. The Gemini path has two full scored runs.
 - Live mode is tested against recorded GDELT replies, not the live service (the build sandbox cannot reach it). GDELT's language filter syntax is not confirmed in its public docs, so live mode retries without it if the first query is rejected.
@@ -246,7 +291,10 @@ Contract search uses Gemini embeddings when `GEMINI_API_KEY` is set, otherwise C
 - [x] Live mode (GDELT) and a daily Windows schedule
 - [x] Full scored run on Gemini; results in this README
 - [x] Fix the worst miss and re-run (before/after numbers): unsafe backups warned 0 of 13 → 13 of 13
+- [x] Event memory: new / escalated / ongoing / resolved, stored in BigQuery, scored on a 10-headline sequence
 - [ ] Coverage as a structured contract field read by code, not judged by the model
+- [ ] Evaluation as a CI gate: fail the build if precision, recall or event decisions get worse
+- [ ] Parallel advisor per supplier (LangGraph `Send`), and tiered model routing
 - [ ] Streamlit app, demo GIF
 - [x] GCP deployment at £0: Cloud Run Job + Cloud Scheduler + BigQuery, Terraform, budget alert, CI
 - [ ] Failure alerting, remote Terraform state, keyless deploys from GitHub Actions

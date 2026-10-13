@@ -4,6 +4,8 @@
        |
     mapper  --(no supplier exposed)-----------------------------> END
        |
+    events  --(known event, nothing new: "ongoing")-------------> END   (only when memory is on)
+       |
     impact -> advisor -> verifier --(issues, first time)--> advisor
                              |
                              +--(approved, or out of revisions)--> END
@@ -35,12 +37,14 @@ class RunState(TypedDict, total=False):
     issues: list[str]
     backup_warnings: list[dict]    # backups hit by the same event
     revisions: int
-    status: str                    # running | no_disruption | no_exposure | approved | needs_review | error
+    status: str                    # running | no_disruption | no_exposure | ongoing | approved | needs_review | error
+    event: dict                    # event memory decision: event_id, event_status, new_suppliers, matched_on
     error: str
     usage: list[dict]
 
 
-def build_graph(llm: LLM):
+def build_graph(llm: LLM, memory=None):
+    """memory: an events.EventMemory, or None to treat every headline as new (scored replays)."""
     def guarded(name, fn):
         def node(state: RunState) -> RunState:
             try:
@@ -70,6 +74,16 @@ def build_graph(llm: LLM):
                 seen.add(s.supplier_id)
         status = "running" if mapped else "no_exposure"
         return {"suppliers": mapped, "status": status, "usage": state["usage"] + [run.usage()]}
+
+    def event_node(state: RunState) -> RunState:
+        # Deterministic: no model call. The decision is only committed to memory
+        # by the caller once the headline is fully handled, so a crash never
+        # suppresses an alert that was not delivered.
+        news = state["news"]
+        ids = [s["supplier_id"] for s in state["suppliers"]]
+        decision = memory.decide(state["scan"], ids, news.get("event_date", ""))
+        status = "ongoing" if decision["event_status"] == "ongoing" else "running"
+        return {"event": decision, "status": status}
 
     def impact_node(state: RunState) -> RunState:
         run = agents.impact(llm, [s["supplier_id"] for s in state["suppliers"]])
@@ -104,11 +118,17 @@ def build_graph(llm: LLM):
     g.add_node("scanner", guarded("scanner", scan_node))
     g.add_node("mapper", guarded("mapper", map_node))
     g.add_node("impact", guarded("impact", impact_node))
+    if memory is not None:
+        g.add_node("events", guarded("events", event_node))
     g.add_node("advisor", guarded("advisor", advise_node))
     g.add_node("verifier", guarded("verifier", verify_node))
     g.set_entry_point("scanner")
     g.add_conditional_edges("scanner", after, {"continue": "mapper", "stop": END})
-    g.add_conditional_edges("mapper", after, {"continue": "impact", "stop": END})
+    if memory is not None:
+        g.add_conditional_edges("mapper", after, {"continue": "events", "stop": END})
+        g.add_conditional_edges("events", after, {"continue": "impact", "stop": END})
+    else:
+        g.add_conditional_edges("mapper", after, {"continue": "impact", "stop": END})
     g.add_conditional_edges("impact", after, {"continue": "advisor", "stop": END})
     g.add_conditional_edges("advisor", after, {"continue": "verifier", "stop": END})
     g.add_conditional_edges("verifier", after, {"continue": "advisor", "stop": END})

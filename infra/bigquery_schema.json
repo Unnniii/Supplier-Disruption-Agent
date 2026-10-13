@@ -136,5 +136,23 @@
     "type": "STRING",
     "mode": "NULLABLE",
     "description": "The full run record as JSON text; query with JSON_VALUE / JSON_QUERY"
+  },
+  {
+    "name": "event_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Event this headline was matched to (event memory)"
+  },
+  {
+    "name": "event_status",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "new, escalated or ongoing (ongoing = known event, not re-alerted)"
+  },
+  {
+    "name": "model_calls",
+    "type": "INTEGER",
+    "mode": "NULLABLE",
+    "description": "LLM calls spent on this headline"
   }
 ]

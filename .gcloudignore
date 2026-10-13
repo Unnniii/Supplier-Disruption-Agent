@@ -13,3 +13,4 @@ logs/
 infra/.terraform/
 infra/*.tfstate*
 infra/terraform.tfvars
+data/events.json
